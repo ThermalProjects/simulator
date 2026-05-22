@@ -8,7 +8,6 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #f5f5f5; font-family: 'Courier New', monospace; overflow: hidden; }
-    #canvas-container { position: relative; }
 
     #sidebar {
       position: fixed;
@@ -29,7 +28,7 @@
       font-family: 'Courier New', monospace;
       margin-top: 4px;
     }
-    #sidebar input[type=text], #sidebar input[type=number] {
+    #sidebar input[type=text] {
       width: 100%;
       padding: 5px 8px;
       font-size: 13px;
@@ -52,38 +51,30 @@
       cursor: pointer;
       margin-top: 4px;
       font-weight: bold;
-      letter-spacing: 0.3px;
       transition: filter 0.15s;
     }
     .btn:hover { filter: brightness(0.9); }
-    #btnStart  { background: #87ceeb; color: #003050; }
-    #btnStart.active { background: #b43232; color: #fff; }
-    #btnMode   { background: #6495ed; color: #fff; }
+    #btnStart       { background: #87ceeb; color: #003050; }
+    #btnStart.active{ background: #b43232; color: #fff; }
+    #btnMode        { background: #6495ed; color: #fff; }
 
-    /* Status dot pequeño en esquina del sidebar */
+    #status-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
     #status-dot {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      background: #aaa;
-      display: inline-block;
-      margin-right: 6px;
-      vertical-align: middle;
+      width: 10px; height: 10px; border-radius: 50%; background: #aaa; flex-shrink: 0;
     }
     #status-dot.connected    { background: #22cc66; box-shadow: 0 0 6px #22cc66; }
     #status-dot.disconnected { background: #cc3333; }
     #status-dot.logging      { background: #f5a623; animation: pulse 0.8s infinite; }
-    @keyframes pulse {
-      0%,100% { opacity:1; } 50% { opacity:0.4; }
-    }
-    #status-label {
-      font-size: 11px; color: #555;
-      font-family: 'Courier New', monospace;
-      vertical-align: middle;
-    }
-    #status-row {
-      display: flex;
-      align-items: center;
-      margin-bottom: 4px;
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    #status-label { font-size: 11px; color: #555; font-family: 'Courier New', monospace; }
+
+    /* Canvas container ocupa todo excepto el sidebar */
+    #canvas-container {
+      position: fixed;
+      left: 270px;
+      top: 0;
+      right: 0;
+      bottom: 0;
     }
 
     canvas { display: block; }
@@ -91,10 +82,7 @@
 </head>
 <body>
 
-<!-- Sidebar -->
 <div id="sidebar">
-
-  <!-- Estado de conexión dentro del sidebar, discreto -->
   <div id="status-row">
     <span id="status-dot" class="disconnected"></span>
     <span id="status-label">Sin conexión</span>
@@ -136,45 +124,38 @@
 <script>
 document.addEventListener("DOMContentLoaded", function () {
 
-  // ── WebSocket ────────────────────────────────────────────
   const WS_URL = "wss://simulator-z13i.onrender.com";
 
   let ws = null;
   let wsConnected = false;
 
-  const dot   = document.getElementById('status-dot');
-  const lbl   = document.getElementById('status-label');
+  const dot = document.getElementById('status-dot');
+  const lbl = document.getElementById('status-label');
 
-  function setStatus(cls, text){
-    dot.className = cls;
-    lbl.textContent = text;
-  }
+  function setStatus(cls, text){ dot.className = cls; lbl.textContent = text; }
 
   function connectWS(){
     if(ws){ try{ ws.close(); }catch(e){} }
-    setStatus('disconnected', 'Conectando…');
+    setStatus('disconnected','Conectando…');
     ws = new WebSocket(WS_URL);
 
-    ws.onopen  = () => { wsConnected = true;  setStatus('connected',  'Conectado'); };
-    ws.onclose = () => { wsConnected = false; setStatus('disconnected','Sin conexión');
-                         // reintentar en 5s si se cae
+    ws.onopen  = () => { wsConnected=true;  setStatus('connected','Conectado'); };
+    ws.onclose = () => { wsConnected=false; setStatus('disconnected','Sin conexión');
                          setTimeout(connectWS, 5000); };
-    ws.onerror = ()  => { setStatus('disconnected', 'Error de conexión'); };
+    ws.onerror = ()  => { setStatus('disconnected','Error de conexión'); };
 
     ws.onmessage = (evt) => {
       const line = evt.data.trim();
       if(!line) return;
-      if(line.startsWith('CMD') || line === 'START' || line === 'STOP') return;
+      if(line==='START' || line==='STOP' || line.startsWith('CMD')) return;
       const vals = line.split(',');
       if(vals.length < 6) return;
 
       const newTsup = parseFloat(vals[1]);
       const newTdew = parseFloat(vals[3]);
       const newPwm  = parseFloat(vals[4]);
-
       if(isNaN(newTsup) || isNaN(newTdew)) return;
 
-      // guardar prev ANTES de actualizar next ← fix clave
       prevTsup       = nextTsup;
       prevTdew       = nextTdew;
       prevPwmPeltier = nextPwmPeltier;
@@ -198,48 +179,42 @@ document.addEventListener("DOMContentLoaded", function () {
     };
   }
 
-  // Conectar automáticamente al cargar
   connectWS();
 
   function sendMsg(msg){
-    if(ws && wsConnected && ws.readyState === WebSocket.OPEN) ws.send(msg);
+    if(ws && ws.readyState === WebSocket.OPEN) ws.send(msg);
   }
 
-  // ── State ──────────────────────────────────────────────
+  // ── Estado ──────────────────────────────────────────
   let prevPwmPeltier=0, nextPwmPeltier=0, pwmPeltier=0;
-  let Tamb=20, Tsup=20, Tdew=0, RH=70, Tref=25;
+  let Tsup=20, Tdew=0, Tref=25;
   let nextTamb=20, nextTsup=20, nextRH=70, nextTdew=0;
   let pwmFan=0;
-  let isLogging=false;
-  let startTime=0;
+  let isLogging=false, startTime=0;
   let ensayoNumero=0, ensayoDuracion=300;
-  let showTdew=false;
-  let justFinished=false;
-
+  let showTdew=false, justFinished=false;
   let histTsup=[], histTdew=[], histPeltier=[], histFan=[], histTime=[];
-
-  let prevTsup=0, prevTdew=0;
+  let prevTsup=20, prevTdew=0;
   let interpTimer=0;
   const Tsamp=0.2, interpStep=0.05;
 
   const g  = id => document.getElementById(id);
   const gv = id => g(id).value.trim();
-  const gf = (id, d) => { const v=parseFloat(gv(id)); return isNaN(v)?d:v; };
+  const gf = (id,d) => { const v=parseFloat(gv(id)); return isNaN(v)?d:v; };
 
-  // ── Botones ────────────────────────────────────────────
+  // ── Botones ─────────────────────────────────────────
   g('btnStart').addEventListener('click', () => {
     if(!isLogging){
-      if(!wsConnected){ alert('Espera a que conecte con el servidor…'); return; }
-
-      Tref           = gf('txtTref', 25);
-      ensayoDuracion = gf('txtDuracion', 300);
-      const Tambv    = gf('txtTamb', 20);
-      const RHv      = gf('txtRH', 70);
-      const Kp       = gf('txtKp', 58.93);
-      const Ki       = gf('txtKi', 3.91);
-      const Kd       = gf('txtKd', 2.66);
-      const lam      = gf('txtLam', 0.67);
-      const mu       = gf('txtMu', 1.47);
+      if(!wsConnected){ alert('Espera a que conecte…'); return; }
+      Tref           = gf('txtTref',25);
+      ensayoDuracion = gf('txtDuracion',300);
+      const Tambv    = gf('txtTamb',20);
+      const RHv      = gf('txtRH',70);
+      const Kp       = gf('txtKp',58.93);
+      const Ki       = gf('txtKi',3.91);
+      const Kd       = gf('txtKd',2.66);
+      const lam      = gf('txtLam',0.67);
+      const mu       = gf('txtMu',1.47);
 
       isLogging=true; startTime=Date.now(); ensayoNumero++;
       histTsup=[]; histTdew=[]; histPeltier=[]; histFan=[]; histTime=[];
@@ -249,103 +224,92 @@ document.addEventListener("DOMContentLoaded", function () {
       interpTimer=0;
 
       sendMsg(`START,${Tref},${Kp},${Ki},${Kd},${lam},${mu},${ensayoDuracion},${Tambv},${RHv}\n`);
-
-      g('btnStart').textContent = 'Detener ensayo';
+      g('btnStart').textContent='Detener ensayo';
       g('btnStart').classList.add('active');
-      setStatus('logging', 'Ensayo en curso');
-
+      setStatus('logging','Ensayo en curso');
     } else {
       isLogging=false;
       sendMsg('STOP\n');
       justFinished=true;
-      g('btnStart').textContent = 'Iniciar ensayo';
+      g('btnStart').textContent='Iniciar ensayo';
       g('btnStart').classList.remove('active');
-      setStatus('connected', 'Conectado');
+      setStatus('connected','Conectado');
     }
   });
 
   g('btnMode').addEventListener('click', () => {
-    showTdew = !showTdew;
-    if(showTdew){
-      sendMsg('MODE_TDEW_ON\n');
-      g('btnMode').textContent = 'Modo: Rocío';
-    } else {
-      sendMsg('MODE_TDEW_OFF\n');
-      g('btnMode').textContent = 'Modo: Consigna';
-    }
+    showTdew=!showTdew;
+    g('btnMode').textContent = showTdew ? 'Modo: Rocío' : 'Modo: Consigna';
+    sendMsg(showTdew ? 'MODE_TDEW_ON\n' : 'MODE_TDEW_OFF\n');
   });
 
-  // ── p5.js ─────────────────────────────────────────────
+  // ── p5 sketch ────────────────────────────────────────
   new p5(function(s){
 
     const C = {
-      bg:      s.color(245),
-      panel:   s.color(255),
-      border:  s.color(180),
-      title:   s.color(0,80,140),
-      text:    s.color(0),
-      param:   s.color(50,0,120),
-      green:   s.color(0,150,0),
-      blue:    s.color(0,0,255),
-      magenta: s.color(255,0,255),
-      gridLine:s.color(200),
-      gridTxt: s.color(50),
+      bg:       () => s.color(245),
+      panel:    () => s.color(255),
+      border:   () => s.color(180),
+      title:    () => s.color(0,80,140),
+      text:     () => s.color(0),
+      param:    () => s.color(50,0,120),
+      green:    () => s.color(0,150,0),
+      blue:     () => s.color(0,0,255),
+      magenta:  () => s.color(255,0,255),
+      gridLine: () => s.color(200),
+      gridTxt:  () => s.color(50),
     };
 
-    const SB = 270;  // sidebar width
-    // Sin WB — no hay barra superior
-
     s.setup = function(){
-      const cnv = s.createCanvas(window.innerWidth - SB, window.innerHeight);
+      const container = document.getElementById('canvas-container');
+      const cnv = s.createCanvas(container.offsetWidth, container.offsetHeight);
       cnv.parent('canvas-container');
-      cnv.elt.style.marginLeft = SB + 'px';
       s.textFont('Courier New');
     };
 
     s.windowResized = function(){
-      s.resizeCanvas(window.innerWidth - SB, window.innerHeight);
+      const container = document.getElementById('canvas-container');
+      s.resizeCanvas(container.offsetWidth, container.offsetHeight);
     };
 
     s.draw = function(){
-      s.background(C.bg);
+      s.background(C.bg());
 
-      // Interpolación
       interpTimer += interpStep;
-      const ratio = s.constrain(interpTimer / Tsamp, 0, 1);
+      const ratio = s.constrain(interpTimer/Tsamp, 0, 1);
       Tsup       = s.lerp(prevTsup,       nextTsup,       ratio);
       Tdew       = s.lerp(prevTdew,       nextTdew,       ratio);
       pwmPeltier = s.lerp(prevPwmPeltier, nextPwmPeltier, ratio);
 
       // Título
-      s.textSize(22); s.fill(C.title); s.textAlign(s.LEFT, s.TOP); s.noStroke();
+      s.textSize(22); s.fill(C.title()); s.textAlign(s.LEFT,s.TOP); s.noStroke();
       s.text('Fractional PID Thermal System Simulator', 10, 10);
 
-      // Info strip
-      const infoY = 50;
-      s.textSize(13); s.fill(C.text); s.textAlign(s.LEFT, s.TOP);
-      s.text(`Temperatura célula:    ${s.nf(Tsup,1,2)} °C`,   10, infoY);
-      s.text(`Temperatura ambiente:  ${gv('txtTamb')} °C`,     10, infoY+18);
-      s.text(`Temperatura rocío:     ${s.nf(Tdew,1,2)} °C`,   10, infoY+36);
-      s.text(`PWM Peltier:           ${s.nf(pwmPeltier,1,0)}`, 10, infoY+54);
+      // Info
+      const infoY=50;
+      s.textSize(13); s.fill(C.text()); s.textAlign(s.LEFT,s.TOP);
+      s.text(`Temperatura célula:    ${s.nf(Tsup,1,2)} °C`,    10, infoY);
+      s.text(`Temperatura ambiente:  ${gv('txtTamb')} °C`,      10, infoY+18);
+      s.text(`Temperatura rocío:     ${s.nf(Tdew,1,2)} °C`,    10, infoY+36);
+      s.text(`PWM Peltier:           ${s.nf(pwmPeltier,1,0)}`,  10, infoY+54);
 
-      // Parámetros columna derecha
-      const paramX = s.width - 230;
-      let   paramY = infoY;
-      s.fill(C.param); s.textAlign(s.LEFT, s.TOP);
-      s.text(`T Consigna: ${gv('txtTref')}`, paramX, paramY); paramY+=18;
-      s.text(`Kp: ${gv('txtKp')}`,           paramX, paramY); paramY+=18;
-      s.text(`Ki: ${gv('txtKi')}`,           paramX, paramY); paramY+=18;
-      s.text(`Kd: ${gv('txtKd')}`,           paramX, paramY); paramY+=18;
-      s.text(`λ:  ${gv('txtLam')}`,          paramX, paramY); paramY+=18;
-      s.text(`μ:  ${gv('txtMu')}`,           paramX, paramY); paramY+=18;
+      // Parámetros
+      const px=s.width-230; let py=infoY;
+      s.fill(C.param()); s.textAlign(s.LEFT,s.TOP);
+      s.text(`T Consigna: ${gv('txtTref')}`, px, py); py+=18;
+      s.text(`Kp: ${gv('txtKp')}`,           px, py); py+=18;
+      s.text(`Ki: ${gv('txtKi')}`,           px, py); py+=18;
+      s.text(`Kd: ${gv('txtKd')}`,           px, py); py+=18;
+      s.text(`λ:  ${gv('txtLam')}`,          px, py); py+=18;
+      s.text(`μ:  ${gv('txtMu')}`,           px, py);
 
-      // Timer ensayo
+      // Timer
       if(isLogging){
-        const elapsed = Math.floor((Date.now()-startTime)/1000);
-        s.fill(C.text);
-        s.text(`Ensayo nº: ${ensayoNumero}`,              10, infoY+72);
+        const elapsed=Math.floor((Date.now()-startTime)/1000);
+        s.fill(C.text());
+        s.text(`Ensayo nº: ${ensayoNumero}`,                 10, infoY+72);
         s.text(`Tiempo: ${elapsed} s / ${ensayoDuracion} s`, 10, infoY+90);
-        if(elapsed >= ensayoDuracion){
+        if(elapsed>=ensayoDuracion){
           isLogging=false; justFinished=true;
           g('btnStart').textContent='Iniciar ensayo';
           g('btnStart').classList.remove('active');
@@ -361,7 +325,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   }, document.getElementById('canvas-container'));
 
-  // ── Gráfica ───────────────────────────────────────────
+  // ── Gráfica ──────────────────────────────────────────
   function drawGraph(s, C){
     const gx=60, gy=150;
     const gw=s.width-gx-20;
@@ -369,85 +333,84 @@ document.addEventListener("DOMContentLoaded", function () {
     const tMin=0, tMax=40;
     const yLines=8, xLines=6;
 
-    s.fill(255); s.stroke(C.border); s.strokeWeight(1);
+    s.fill(C.panel()); s.stroke(C.border()); s.strokeWeight(1);
     s.rect(gx, gy, gw, gh, 6);
 
     // Leyenda
     const lx=gx+15, ly=gy+14, lsz=11;
-    s.noStroke(); s.fill(C.green); s.rect(lx, ly, lsz, lsz);
-    s.fill(C.text); s.textSize(11); s.textAlign(s.LEFT, s.CENTER);
+    s.noStroke(); s.fill(C.green()); s.rect(lx,ly,lsz,lsz);
+    s.fill(C.text()); s.textSize(11); s.textAlign(s.LEFT,s.CENTER);
     s.text('Tsup', lx+lsz+4, ly+lsz/2);
-
     if(showTdew){
-      s.fill(C.magenta); s.rect(lx+70, ly, lsz, lsz);
-      s.fill(C.text); s.text('Tdew', lx+70+lsz+4, ly+lsz/2);
+      s.fill(C.magenta()); s.rect(lx+70,ly,lsz,lsz);
+      s.fill(C.text()); s.text('Tdew', lx+70+lsz+4, ly+lsz/2);
     } else {
-      s.fill(C.blue); s.rect(lx+140, ly, lsz, lsz);
-      s.fill(C.text); s.text('Tref', lx+140+lsz+4, ly+lsz/2);
+      s.fill(C.blue()); s.rect(lx+140,ly,lsz,lsz);
+      s.fill(C.text()); s.text('Tref', lx+140+lsz+4, ly+lsz/2);
     }
 
     // Grid Y
-    s.stroke(C.gridLine); s.strokeWeight(1);
+    s.stroke(C.gridLine()); s.strokeWeight(1);
     for(let i=0;i<=yLines;i++){
       const y=gy+gh-i*gh/yLines;
-      s.line(gx, y, gx+gw, y);
-      s.fill(C.gridTxt); s.noStroke();
-      s.textSize(11); s.textAlign(s.RIGHT, s.CENTER);
+      s.line(gx,y,gx+gw,y);
+      s.fill(C.gridTxt()); s.noStroke();
+      s.textSize(11); s.textAlign(s.RIGHT,s.CENTER);
       s.text((tMin+i*(tMax-tMin)/yLines).toFixed(0), gx-6, y);
-      s.stroke(C.gridLine);
+      s.stroke(C.gridLine());
     }
 
     if(histTime.length < 2) return;
 
     const tStart=histTime[0];
-    const tEnd=Math.max(histTime[histTime.length-1], histTime[0]+1);
+    const tEnd=Math.max(histTime[histTime.length-1], tStart+1);
 
     // Grid X
     for(let i=0;i<=xLines;i++){
-      const xVal=s.lerp(tStart, tEnd, i/xLines);
-      const x=s.map(xVal, tStart, tEnd, gx, gx+gw);
-      s.stroke(C.gridLine); s.line(x, gy, x, gy+gh);
-      s.fill(C.gridTxt); s.noStroke();
-      s.textSize(11); s.textAlign(s.CENTER, s.TOP);
+      const xVal=s.lerp(tStart,tEnd,i/xLines);
+      const x=s.map(xVal,tStart,tEnd,gx,gx+gw);
+      s.stroke(C.gridLine()); s.line(x,gy,x,gy+gh);
+      s.fill(C.gridTxt()); s.noStroke();
+      s.textSize(11); s.textAlign(s.CENTER,s.TOP);
       s.text(xVal.toFixed(0), x, gy+gh+4);
     }
 
     // Etiquetas ejes
-    s.fill(C.text); s.noStroke(); s.textSize(13);
-    s.textAlign(s.CENTER, s.TOP);
+    s.fill(C.text()); s.noStroke(); s.textSize(13);
+    s.textAlign(s.CENTER,s.TOP);
     s.text('Tiempo [s]', gx+gw/2, gy+gh+30);
-    s.push(); s.translate(gx-42, gy+gh/2); s.rotate(-Math.PI/2);
-    s.textAlign(s.CENTER, s.CENTER); s.text('Temperatura celda [°C]', 0, 0); s.pop();
+    s.push(); s.translate(gx-42,gy+gh/2); s.rotate(-Math.PI/2);
+    s.textAlign(s.CENTER,s.CENTER); s.text('Temperatura celda [°C]',0,0); s.pop();
 
     // Línea Tref
     if(!showTdew){
-      s.stroke(C.blue); s.strokeWeight(1.5);
-      const yRef=s.map(Tref, 0, tMax, gy+gh, gy);
-      s.line(gx, yRef, gx+gw, yRef);
+      s.stroke(C.blue()); s.strokeWeight(1.5);
+      const yRef=s.map(Tref,0,tMax,gy+gh,gy);
+      s.line(gx,yRef,gx+gw,yRef);
     }
 
     // Curva Tsup
-    s.stroke(C.green); s.strokeWeight(2); s.noFill(); s.beginShape();
+    s.stroke(C.green()); s.strokeWeight(2); s.noFill(); s.beginShape();
     for(let i=0;i<histTsup.length;i++){
-      const x=s.constrain(s.map(histTime[i], tStart, tEnd, gx, gx+gw), gx, gx+gw);
-      const y=s.constrain(s.map(histTsup[i], 0, tMax, gy+gh, gy), gy, gy+gh);
-      s.vertex(x, y);
+      const x=s.constrain(s.map(histTime[i],tStart,tEnd,gx,gx+gw),gx,gx+gw);
+      const y=s.constrain(s.map(histTsup[i],0,tMax,gy+gh,gy),gy,gy+gh);
+      s.vertex(x,y);
     }
     s.endShape();
 
     // Curva Tdew
     if(showTdew){
-      s.stroke(C.magenta); s.strokeWeight(1.5); s.noFill(); s.beginShape();
+      s.stroke(C.magenta()); s.strokeWeight(1.5); s.noFill(); s.beginShape();
       for(let i=0;i<histTdew.length;i++){
-        const x=s.constrain(s.map(histTime[i], tStart, tEnd, gx, gx+gw), gx, gx+gw);
-        const y=s.constrain(s.map(histTdew[i], 0, tMax, gy+gh, gy), gy, gy+gh);
-        s.vertex(x, y);
+        const x=s.constrain(s.map(histTime[i],tStart,tEnd,gx,gx+gw),gx,gx+gw);
+        const y=s.constrain(s.map(histTdew[i],0,tMax,gy+gh,gy),gy,gy+gh);
+        s.vertex(x,y);
       }
       s.endShape();
     }
   }
 
-  // ── CSV ───────────────────────────────────────────────
+  // ── CSV ──────────────────────────────────────────────
   function downloadCSV(){
     let csv='Tiempo,Tamb,Tsup,Tdew,RH,Tref,PWM_Peltier,PWM_Fan,Kp,Ki,Kd,Lambda,Mu\n';
     for(let i=0;i<histTime.length;i++){
@@ -456,16 +419,14 @@ document.addEventListener("DOMContentLoaded", function () {
         gv('txtTamb'), histTsup[i].toFixed(4), histTdew[i].toFixed(4),
         gv('txtRH'), Tref,
         histPeltier[i].toFixed(2), histFan[i].toFixed(2),
-        gv('txtKp'), gv('txtKi'), gv('txtKd'), gv('txtLam'), gv('txtMu')
+        gv('txtKp'),gv('txtKi'),gv('txtKd'),gv('txtLam'),gv('txtMu')
       ].join(',')+'\n';
     }
     const blob=new Blob([csv],{type:'text/csv'});
     const a=document.createElement('a');
     a.href=URL.createObjectURL(blob);
     a.download=`Tamb_${gv('txtTamb')}_ensayo_${String(ensayoNumero).padStart(3,'0')}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
 
 }); // DOMContentLoaded
