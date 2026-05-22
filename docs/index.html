@@ -197,26 +197,33 @@ function connectWS(){
     const vals = line.split(',');
     if(vals.length < 6) return;
 
-    nextTamb      = parseFloat(vals[0]);
-    nextTsup      = parseFloat(vals[1]);
-    nextRH        = parseFloat(vals[2]);
-    nextTdew      = parseFloat(vals[3]);
-    nextPwmPeltier= parseFloat(vals[4]);
-    pwmFan        = parseFloat(vals[5]);
+    const newTsup = parseFloat(vals[1]);
+    const newTdew = parseFloat(vals[3]);
+    const newPwm  = parseFloat(vals[4]);
+
+    if(isNaN(newTsup) || isNaN(newTdew)) return;  // ← protección NaN
+
+    // guardar prev ANTES de actualizar next
+    prevTsup          = nextTsup;
+    prevTdew          = nextTdew;
+    prevPwmPeltier    = nextPwmPeltier;
+
+    nextTamb          = parseFloat(vals[0]);
+    nextTsup          = newTsup;
+    nextRH            = parseFloat(vals[2]);
+    nextTdew          = newTdew;
+    nextPwmPeltier    = newPwm;
+    pwmFan            = parseFloat(vals[5]);
+    interpTimer       = 0;   // reiniciar interpolación
 
     if(isLogging){
       const t = (Date.now() - startTime) / 1000;
       histTime.push(t);
-      histTsup.push(nextTsup);
-      histTdew.push(nextTdew);
-      histPeltier.push(nextPwmPeltier);
+      histTsup.push(newTsup);
+      histTdew.push(newTdew);
+      histPeltier.push(newPwm);
       histFan.push(pwmFan);
     }
-
-    prevTsup = nextTsup;
-    prevTdew = nextTdew;
-    prevPwmPeltier = nextPwmPeltier;
-    interpTimer = 0;
   };
 }
 
