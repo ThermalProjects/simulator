@@ -124,7 +124,7 @@
 <!-- WebSocket URL bar -->
 <div id="ws-bar">
   <label>WebSocket:</label>
-  <input id="wsUrl" type="text" value="wss://simulator-z13i.onrender.com"
+  <input id="wsUrl" type="text" value="wss://simulator-z13i.onrender.com"/>
   <button id="btnConnect">Conectar</button>
 </div>
 
@@ -164,6 +164,9 @@
 <div id="canvas-container"></div>
 
 <script>
+
+  document.addEventListener("DOMContentLoaded", function () {
+
 // ── WebSocket ──────────────────────────────────────────────
 let ws = null;
 let wsConnected = false;
@@ -483,6 +486,7 @@ function downloadCSV(){
   a.download = `Tamb_${gv('txtTamb')}_ensayo_${String(ensayoNumero).padStart(3,'0')}.csv`;
   a.click();
 }
+});
 </script>
 </body>
 </html>
