@@ -645,12 +645,11 @@ document.addEventListener("DOMContentLoaded", function () {
       ctx.fillText('No data available', col, cy); cy+=18;
     }
 
-    offscreen.toBlob(blob => {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `FOPID_Tamb${gv('txtTamb')}_Tref${gv('txtTref')}_trial${String(ensayoNumero).padStart(3,'0')}.png`;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    }, 'image/png');
+    const dataURL = offscreen.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = dataURL;
+    a.download = `FOPID_Tamb${gv('txtTamb')}_Tref${gv('txtTref')}_trial${String(ensayoNumero).padStart(3,'0')}.png`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
 
   
