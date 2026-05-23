@@ -354,9 +354,9 @@ document.addEventListener("DOMContentLoaded", function () {
       // Info readouts (no parameters shown here)
       const infoY=56;
       s.textSize(13); s.fill(C.text()); s.textAlign(s.LEFT,s.TOP);
-      s.text(`Cold face temp:      ${s.nf(Tsup,1,2)} °C`,     _gx, infoY);
+      s.text(`Cold side temperature:      ${s.nf(Tsup,1,2)} °C`,     _gx, infoY);
       s.text(`Ambient temperature: ${gv('txtTamb')} °C`,       _gx, infoY+18);
-      s.text(`Dew point temp:      ${s.nf(Tdew,1,2)} °C`,     _gx, infoY+36);
+      s.text(`Dew point temperature:      ${s.nf(Tdew,1,2)} °C`,     _gx, infoY+36);
       s.text(`PWM Peltier:         ${s.nf(pwmPeltier,1,0)}`,   _gx, infoY+54);
 
       // Metrics column — top-right corner, aligned with graph right edge
