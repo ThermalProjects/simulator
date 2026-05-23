@@ -5,29 +5,30 @@ class ThreeNodePlant:
     def __init__(self, dt=0.2):
         # --------------------------------------------------
         # THERMAL RESISTANCES  [K/W]
+        # Identified experimentally from real plant data
         # --------------------------------------------------
-        # R_cold_amb: fitted from real SS data (fan ON, Tc=12.0°C, Tamb=20.52°C, PWM=64)
-        # Previous value 5.976 caused sim to under-cool (SS error ~0.54°C)
-        self.R_cold_amb = 2.717   # K/W  (was 5.976 — fitted from real data)
-        self.R_cold_mid = 3.638   # Tc ↔ Tm
-        self.R_mid_hot  = 4.670   # Tm ↔ Th
+        self.R_cold_amb = 4.897706  # Rconv — convective resistance to ambient
+        self.R_cold_mid = 4.022803  # R1    — cold face ↔ mid node
+        self.R_mid_hot  = 6.003481  # R2    — mid node ↔ hot face
 
         # Hot side to ambient — fan modulates this
-        # R_hot_fan_off: fitted from real SS data (fan OFF, Tc=13.67°C, Tamb=20.77°C, PWM=119.7)
-        self.R_hot_fan_on  =  1.04   # K/W  (measured, fan=255)
-        self.R_hot_fan_off = 13.89   # K/W  (was 1.84 — fitted from real data)
+        # Measured directly: fan ON/OFF steady-state experiments
+        self.R_hot_fan_on  =  1.04   # K/W  (fan=255)
+        self.R_hot_fan_off = 13.89   # K/W  (fan=0)
 
         # --------------------------------------------------
         # THERMAL CAPACITANCES  [J/K]
+        # Identified experimentally from real plant data
         # --------------------------------------------------
-        self.Cc = 6.69     # cold face
-        self.Cp = 963.11   # mid mass
-        self.Ch = 46.72    # heatsink
+        self.Cc = 10.305737   # cold face
+        self.Cp = 824.187344  # mid mass
+        self.Ch = 56.890349   # heatsink
 
         # --------------------------------------------------
         # PELTIER SMOOTHING TIME CONSTANT  [s]
+        # θ identified experimentally from real plant data
         # --------------------------------------------------
-        self.tau = 8.0     # calibrated from real rise time
+        self.tau = 0.302829
 
         # --------------------------------------------------
         # STATE
