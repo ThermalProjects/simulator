@@ -48,7 +48,7 @@ state = dict(
     RH        = 70.0,
     Tsup      = 20.0,
     Tdew_const= 0.0,
-    fan_on    = True,     # fan state: True = ON (255 PWM), False = OFF (0)
+    fan_on    = False,    # default OFF — must match client default
 )
 
 MAX_PWM = 255
@@ -61,6 +61,7 @@ async def handler(websocket):
 
     plant.reset(T_init=state['Tamb'])
     state['running'] = False
+    state['fan_on']  = False   # reset to OFF on each new connection
     e_hist = [0.0] * (M + 1)
     init_gl(state['lambda_'], state['mu'])
 
@@ -98,6 +99,9 @@ async def handler(websocket):
                     if len(parts) > 6:  state['mu']      = float(parts[6])
                     if len(parts) > 8:  state['Tamb']    = float(parts[8])
                     if len(parts) > 9:  state['RH']      = float(parts[9])
+                    # parts[10] carries fan state from client (1=ON, 0=OFF)
+                    if len(parts) > 10:
+                        state['fan_on'] = (parts[10].strip() == '1')
 
                     state['Tdew_const'] = calc_dew(state['Tamb'], state['RH'])
                     plant.reset(T_init=state['Tamb'])
