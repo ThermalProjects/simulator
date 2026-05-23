@@ -347,25 +347,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
       // Title
       s.textSize(22); s.fill(C.title()); s.textAlign(s.LEFT,s.TOP); s.noStroke();
-      s.text('Fractional Order PID Thermal System Simulator', _gx, 10);
+      s.text('Fractional PID Thermal System Simulator', _gx, 10);
       s.textSize(11); s.fill(s.color(100,100,130));
       s.text('Peltier cell thermal control  ·  FOPID controller', _gx, 36);
 
       // Info readouts (no parameters shown here)
-const infoY = 56;
-const vx = _gx + 195; // columna de valores
-s.textSize(13); s.fill(C.text()); s.textAlign(s.LEFT, s.TOP);
-
-s.text('Cold side temperature:',  _gx, infoY);
-s.text('Ambient temperature:',    _gx, infoY+18);
-s.text('Dew point temperature:',  _gx, infoY+36);
-s.text('PWM Peltier:',            _gx, infoY+54);
-
-s.textAlign(s.LEFT, s.TOP);
-s.text(`${s.nf(Tsup,1,2)} °C`,        vx, infoY);
-s.text(`${gv('txtTamb')} °C`,          vx, infoY+18);
-s.text(`${s.nf(Tdew,1,2)} °C`,        vx, infoY+36);
-s.text(`${s.nf(pwmPeltier,1,0)}`,      vx, infoY+54);
+      const infoY=56;
+      s.textSize(13); s.fill(C.text()); s.textAlign(s.LEFT,s.TOP);
+      s.text(`Cold face temp:      ${s.nf(Tsup,1,2)} °C`,     _gx, infoY);
+      s.text(`Ambient temperature: ${gv('txtTamb')} °C`,       _gx, infoY+18);
+      s.text(`Dew point temp:      ${s.nf(Tdew,1,2)} °C`,     _gx, infoY+36);
+      s.text(`PWM Peltier:         ${s.nf(pwmPeltier,1,0)}`,   _gx, infoY+54);
 
       // Metrics column — top-right corner, aligned with graph right edge
       if(trialMetrics && !isLogging){
@@ -418,13 +410,11 @@ s.text(`${s.nf(pwmPeltier,1,0)}`,      vx, infoY+54);
           setStatus('connected','Connected');
         }
       }
-      
+
       drawGraph(s, C);
+
       if(justFinished){
         justFinished=false;
-        // Capture snapshot BEFORE downloading so canvas is still populated
-        captureAndSave(s);
-        downloadCSV();
       }
     };
 
@@ -501,7 +491,7 @@ s.text(`${s.nf(pwmPeltier,1,0)}`,      vx, infoY+54);
     s.textAlign(s.CENTER,s.TOP);
     s.text('Time [s]', gx+gw/2, gy+gh+30);
     s.push(); s.translate(gx-42,gy+gh/2); s.rotate(-Math.PI/2);
-    s.textAlign(s.CENTER,s.CENTER); s.text('Temperature [°C]',0,0); s.pop();
+    s.textAlign(s.CENTER,s.CENTER); s.text('Peltier cold face temperature [°C]',0,0); s.pop();
 
     // Tref line
     if(!showTdew){
@@ -762,35 +752,6 @@ s.text(`${s.nf(pwmPeltier,1,0)}`,      vx, infoY+54);
   });
 
 
-    // Save as PNG
-    offscreen.toBlob(blob => {
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `Tamb_${gv('txtTamb')}_trial_${String(ensayoNumero).padStart(3,'0')}.png`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    }, 'image/png');
-  }
-
-  // ── CSV export ────────────────────────────────────────
-  function downloadCSV(){
-    let csv='Time,Tamb,Tsup,Tdew,RH,Tref,PWM_Peltier,PWM_Fan,Kp,Ki,Kd,Lambda,Mu\n';
-    for(let i=0;i<histTime.length;i++){
-      csv+=[
-        histTime[i].toFixed(2),
-        gv('txtTamb'), histTsup[i].toFixed(4), histTdew[i].toFixed(4),
-        gv('txtRH'), Tref,
-        histPeltier[i].toFixed(2), histFan[i].toFixed(2),
-        gv('txtKp'),gv('txtKi'),gv('txtKd'),gv('txtLam'),gv('txtMu')
-      ].join(',')+'\n';
-    }
-    const blob=new Blob([csv],{type:'text/csv'});
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(blob);
-    a.download=`Tamb_${gv('txtTamb')}_trial_${String(ensayoNumero).padStart(3,'0')}.csv`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  }
 
 }); // DOMContentLoaded
 </script>
