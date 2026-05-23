@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -68,7 +68,6 @@
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
     #status-label { font-size: 11px; color: #555; font-family: 'Courier New', monospace; }
 
-    /* Canvas container ocupa todo excepto el sidebar */
     #canvas-container {
       position: fixed;
       left: 270px;
@@ -85,10 +84,10 @@
 <div id="sidebar">
   <div id="status-row">
     <span id="status-dot" class="disconnected"></span>
-    <span id="status-label">Sin conexión</span>
+    <span id="status-label">Not connected</span>
   </div>
 
-  <label>T Consigna (°C)</label>
+  <label>Setpoint Temp (°C)</label>
   <input id="txtTref" type="text" value="25.0"/>
 
   <label>Kp</label>
@@ -106,17 +105,17 @@
   <label>μ (mu)</label>
   <input id="txtMu" type="text" value="1.47"/>
 
-  <label>Duración ensayo [s]</label>
+  <label>Trial duration [s]</label>
   <input id="txtDuracion" type="text" value="300"/>
 
-  <label>Temperatura ambiente (°C)</label>
+  <label>Ambient temperature (°C)</label>
   <input id="txtTamb" type="text" value="20.0"/>
 
-  <label>Humedad relativa (%)</label>
+  <label>Relative humidity (%)</label>
   <input id="txtRH" type="text" value="70.0"/>
 
-  <button class="btn" id="btnStart">Iniciar ensayo</button>
-  <button class="btn" id="btnMode">Modo: Consigna</button>
+  <button class="btn" id="btnStart">Start trial</button>
+  <button class="btn" id="btnMode">Mode: Setpoint</button>
 </div>
 
 <div id="canvas-container"></div>
@@ -136,13 +135,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function connectWS(){
     if(ws){ try{ ws.close(); }catch(e){} }
-    setStatus('disconnected','Conectando…');
+    setStatus('disconnected','Connecting…');
     ws = new WebSocket(WS_URL);
 
-    ws.onopen  = () => { wsConnected=true;  setStatus('connected','Conectado'); };
-    ws.onclose = () => { wsConnected=false; setStatus('disconnected','Sin conexión');
+    ws.onopen  = () => { wsConnected=true;  setStatus('connected','Connected'); };
+    ws.onclose = () => { wsConnected=false; setStatus('disconnected','Not connected');
                          setTimeout(connectWS, 5000); };
-    ws.onerror = ()  => { setStatus('disconnected','Error de conexión'); };
+    ws.onerror = ()  => { setStatus('disconnected','Connection error'); };
 
     ws.onmessage = (evt) => {
       const line = evt.data.trim();
@@ -185,7 +184,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if(ws && ws.readyState === WebSocket.OPEN) ws.send(msg);
   }
 
-  // ── Estado ──────────────────────────────────────────
+  // ── State ──────────────────────────────────────────
   let prevPwmPeltier=0, nextPwmPeltier=0, pwmPeltier=0;
   let Tsup=20, Tdew=0, Tref=25;
   let nextTamb=20, nextTsup=20, nextRH=70, nextTdew=0;
@@ -198,14 +197,17 @@ document.addEventListener("DOMContentLoaded", function () {
   let interpTimer=0;
   const Tsamp=0.2, interpStep=0.05;
 
+  // Reference to the p5 sketch instance (set below)
+  let p5instance = null;
+
   const g  = id => document.getElementById(id);
   const gv = id => g(id).value.trim();
   const gf = (id,d) => { const v=parseFloat(gv(id)); return isNaN(v)?d:v; };
 
-  // ── Botones ─────────────────────────────────────────
+  // ── Buttons ─────────────────────────────────────────
   g('btnStart').addEventListener('click', () => {
     if(!isLogging){
-      if(!wsConnected){ alert('Espera a que conecte…'); return; }
+      if(!wsConnected){ alert('Waiting for connection…'); return; }
       Tref           = gf('txtTref',25);
       ensayoDuracion = gf('txtDuracion',300);
       const Tambv    = gf('txtTamb',20);
@@ -224,27 +226,28 @@ document.addEventListener("DOMContentLoaded", function () {
       interpTimer=0;
 
       sendMsg(`START,${Tref},${Kp},${Ki},${Kd},${lam},${mu},${ensayoDuracion},${Tambv},${RHv}\n`);
-      g('btnStart').textContent='Detener ensayo';
+      g('btnStart').textContent='Stop trial';
       g('btnStart').classList.add('active');
-      setStatus('logging','Ensayo en curso');
+      setStatus('logging','Trial in progress');
     } else {
       isLogging=false;
       sendMsg('STOP\n');
       justFinished=true;
-      g('btnStart').textContent='Iniciar ensayo';
+      g('btnStart').textContent='Start trial';
       g('btnStart').classList.remove('active');
-      setStatus('connected','Conectado');
+      setStatus('connected','Connected');
     }
   });
 
   g('btnMode').addEventListener('click', () => {
     showTdew=!showTdew;
-    g('btnMode').textContent = showTdew ? 'Modo: Rocío' : 'Modo: Consigna';
+    g('btnMode').textContent = showTdew ? 'Mode: Dew Point' : 'Mode: Setpoint';
     sendMsg(showTdew ? 'MODE_TDEW_ON\n' : 'MODE_TDEW_OFF\n');
   });
 
   // ── p5 sketch ────────────────────────────────────────
   new p5(function(s){
+    p5instance = s;
 
     const C = {
       bg:       () => s.color(245),
@@ -252,7 +255,6 @@ document.addEventListener("DOMContentLoaded", function () {
       border:   () => s.color(180),
       title:    () => s.color(0,80,140),
       text:     () => s.color(0),
-      param:    () => s.color(50,0,120),
       green:    () => s.color(0,150,0),
       blue:     () => s.color(0,0,255),
       magenta:  () => s.color(255,0,255),
@@ -281,62 +283,73 @@ document.addEventListener("DOMContentLoaded", function () {
       Tdew       = s.lerp(prevTdew,       nextTdew,       ratio);
       pwmPeltier = s.lerp(prevPwmPeltier, nextPwmPeltier, ratio);
 
-      // Título
+      // Title
       s.textSize(22); s.fill(C.title()); s.textAlign(s.LEFT,s.TOP); s.noStroke();
       s.text('Fractional PID Thermal System Simulator', 10, 10);
 
-      // Info
+      // Info readouts (no parameters shown here)
       const infoY=50;
       s.textSize(13); s.fill(C.text()); s.textAlign(s.LEFT,s.TOP);
-      s.text(`Temperatura célula:    ${s.nf(Tsup,1,2)} °C`,    10, infoY);
-      s.text(`Temperatura ambiente:  ${gv('txtTamb')} °C`,      10, infoY+18);
-      s.text(`Temperatura rocío:     ${s.nf(Tdew,1,2)} °C`,    10, infoY+36);
-      s.text(`PWM Peltier:           ${s.nf(pwmPeltier,1,0)}`,  10, infoY+54);
+      s.text(`Cell temperature:    ${s.nf(Tsup,1,2)} °C`,     10, infoY);
+      s.text(`Ambient temperature: ${gv('txtTamb')} °C`,       10, infoY+18);
+      s.text(`Dew point temp:      ${s.nf(Tdew,1,2)} °C`,     10, infoY+36);
+      s.text(`PWM Peltier:         ${s.nf(pwmPeltier,1,0)}`,   10, infoY+54);
 
-      // Parámetros
-      const px=s.width-230; let py=infoY;
-      s.fill(C.param()); s.textAlign(s.LEFT,s.TOP);
-      s.text(`T Consigna: ${gv('txtTref')}`, px, py); py+=18;
-      s.text(`Kp: ${gv('txtKp')}`,           px, py); py+=18;
-      s.text(`Ki: ${gv('txtKi')}`,           px, py); py+=18;
-      s.text(`Kd: ${gv('txtKd')}`,           px, py); py+=18;
-      s.text(`λ:  ${gv('txtLam')}`,          px, py); py+=18;
-      s.text(`μ:  ${gv('txtMu')}`,           px, py);
-
-      // Timer
+      // Trial timer
       if(isLogging){
         const elapsed=Math.floor((Date.now()-startTime)/1000);
         s.fill(C.text());
-        s.text(`Ensayo nº: ${ensayoNumero}`,                 10, infoY+72);
-        s.text(`Tiempo: ${elapsed} s / ${ensayoDuracion} s`, 10, infoY+90);
+        s.text(`Trial nº: ${ensayoNumero}`,                       10, infoY+72);
+        s.text(`Time: ${elapsed} s / ${ensayoDuracion} s`,        10, infoY+90);
         if(elapsed>=ensayoDuracion){
           isLogging=false; justFinished=true;
-          g('btnStart').textContent='Iniciar ensayo';
+          g('btnStart').textContent='Start trial';
           g('btnStart').classList.remove('active');
           sendMsg('STOP\n');
-          setStatus('connected','Conectado');
+          setStatus('connected','Connected');
         }
       }
 
       drawGraph(s, C);
 
-      if(justFinished){ justFinished=false; downloadCSV(); }
+      if(justFinished){
+        justFinished=false;
+        // Capture snapshot BEFORE downloading so canvas is still populated
+        captureAndSave(s);
+        downloadCSV();
+      }
     };
 
   }, document.getElementById('canvas-container'));
 
-  // ── Gráfica ──────────────────────────────────────────
+  // ── Graph (20% smaller) ───────────────────────────────
+  // Original margins: gx=60, gy=150, right=20, bottom=70
+  // Scale gw/gh by 0.8, keep origin roughly centered
   function drawGraph(s, C){
-    const gx=60, gy=150;
-    const gw=s.width-gx-20;
-    const gh=s.height-gy-70;
+    const scaleFactor = 0.80;
+
+    // Full available area
+    const fullW = s.width  - 60 - 20;
+    const fullH = s.height - 150 - 70;
+
+    // Scaled size
+    const gw = fullW * scaleFactor;
+    const gh = fullH * scaleFactor;
+
+    // Center the smaller graph in the available space
+    const offsetX = (fullW - gw) / 2;
+    const offsetY = (fullH - gh) / 2;
+
+    const gx = 60  + offsetX;
+    const gy = 150 + offsetY;
+
     const tMin=0, tMax=40;
     const yLines=8, xLines=6;
 
     s.fill(C.panel()); s.stroke(C.border()); s.strokeWeight(1);
     s.rect(gx, gy, gw, gh, 6);
 
-    // Leyenda
+    // Legend
     const lx=gx+15, ly=gy+14, lsz=11;
     s.noStroke(); s.fill(C.green()); s.rect(lx,ly,lsz,lsz);
     s.fill(C.text()); s.textSize(11); s.textAlign(s.LEFT,s.CENTER);
@@ -349,7 +362,7 @@ document.addEventListener("DOMContentLoaded", function () {
       s.fill(C.text()); s.text('Tref', lx+140+lsz+4, ly+lsz/2);
     }
 
-    // Grid Y
+    // Y grid
     s.stroke(C.gridLine()); s.strokeWeight(1);
     for(let i=0;i<=yLines;i++){
       const y=gy+gh-i*gh/yLines;
@@ -365,7 +378,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const tStart=histTime[0];
     const tEnd=Math.max(histTime[histTime.length-1], tStart+1);
 
-    // Grid X
+    // X grid
     for(let i=0;i<=xLines;i++){
       const xVal=s.lerp(tStart,tEnd,i/xLines);
       const x=s.map(xVal,tStart,tEnd,gx,gx+gw);
@@ -375,21 +388,21 @@ document.addEventListener("DOMContentLoaded", function () {
       s.text(xVal.toFixed(0), x, gy+gh+4);
     }
 
-    // Etiquetas ejes
+    // Axis labels
     s.fill(C.text()); s.noStroke(); s.textSize(13);
     s.textAlign(s.CENTER,s.TOP);
-    s.text('Tiempo [s]', gx+gw/2, gy+gh+30);
+    s.text('Time [s]', gx+gw/2, gy+gh+30);
     s.push(); s.translate(gx-42,gy+gh/2); s.rotate(-Math.PI/2);
-    s.textAlign(s.CENTER,s.CENTER); s.text('Temperatura celda [°C]',0,0); s.pop();
+    s.textAlign(s.CENTER,s.CENTER); s.text('Cell temperature [°C]',0,0); s.pop();
 
-    // Línea Tref
+    // Tref line
     if(!showTdew){
       s.stroke(C.blue()); s.strokeWeight(1.5);
       const yRef=s.map(Tref,0,tMax,gy+gh,gy);
       s.line(gx,yRef,gx+gw,yRef);
     }
 
-    // Curva Tsup
+    // Tsup curve
     s.stroke(C.green()); s.strokeWeight(2); s.noFill(); s.beginShape();
     for(let i=0;i<histTsup.length;i++){
       const x=s.constrain(s.map(histTime[i],tStart,tEnd,gx,gx+gw),gx,gx+gw);
@@ -398,7 +411,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     s.endShape();
 
-    // Curva Tdew
+    // Tdew curve
     if(showTdew){
       s.stroke(C.magenta()); s.strokeWeight(1.5); s.noFill(); s.beginShape();
       for(let i=0;i<histTdew.length;i++){
@@ -410,9 +423,81 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // ── CSV ──────────────────────────────────────────────
+  // ── Screenshot export ────────────────────────────────
+  // Renders the graph + params into an offscreen canvas and saves as PNG
+  function captureAndSave(s){
+    // Get the p5 canvas element
+    const p5canvas = document.querySelector('#canvas-container canvas');
+    if(!p5canvas){ return; }
+
+    // Create an offscreen canvas that includes both the right-side graph
+    // AND a params summary panel on the right
+    const imgW = p5canvas.width + 320;
+    const imgH = p5canvas.height;
+
+    const offscreen = document.createElement('canvas');
+    offscreen.width  = imgW;
+    offscreen.height = imgH;
+    const ctx = offscreen.getContext('2d');
+
+    // Background
+    ctx.fillStyle = '#f5f5f5';
+    ctx.fillRect(0, 0, imgW, imgH);
+
+    // Draw the p5 canvas on the left
+    ctx.drawImage(p5canvas, 0, 0);
+
+    // Draw params panel on the right
+    const px = p5canvas.width + 10;
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#ccc';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(px, 10, 300, 300, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = 'bold 14px "Courier New", monospace';
+    ctx.fillStyle = '#003090';
+    ctx.fillText('Trial Parameters', px + 14, 36);
+
+    const params = [
+      ['Setpoint Temp (°C)', gv('txtTref')],
+      ['Kp',                 gv('txtKp')],
+      ['Ki',                 gv('txtKi')],
+      ['Kd',                 gv('txtKd')],
+      ['λ (lambda)',          gv('txtLam')],
+      ['μ (mu)',              gv('txtMu')],
+      ['Duration [s]',       gv('txtDuracion')],
+      ['Ambient Temp (°C)',   gv('txtTamb')],
+      ['Rel. Humidity (%)',   gv('txtRH')],
+      ['Trial nº',           String(ensayoNumero)],
+    ];
+
+    ctx.font = '13px "Courier New", monospace';
+    ctx.fillStyle = '#222';
+    params.forEach(([label, val], i) => {
+      const yy = 60 + i * 22;
+      ctx.fillStyle = '#555';
+      ctx.fillText(label + ':', px + 14, yy);
+      ctx.fillStyle = '#220066';
+      ctx.fillText(val, px + 190, yy);
+    });
+
+    // Save as PNG
+    offscreen.toBlob(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `Tamb_${gv('txtTamb')}_trial_${String(ensayoNumero).padStart(3,'0')}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }, 'image/png');
+  }
+
+  // ── CSV export ────────────────────────────────────────
   function downloadCSV(){
-    let csv='Tiempo,Tamb,Tsup,Tdew,RH,Tref,PWM_Peltier,PWM_Fan,Kp,Ki,Kd,Lambda,Mu\n';
+    let csv='Time,Tamb,Tsup,Tdew,RH,Tref,PWM_Peltier,PWM_Fan,Kp,Ki,Kd,Lambda,Mu\n';
     for(let i=0;i<histTime.length;i++){
       csv+=[
         histTime[i].toFixed(2),
@@ -425,7 +510,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const blob=new Blob([csv],{type:'text/csv'});
     const a=document.createElement('a');
     a.href=URL.createObjectURL(blob);
-    a.download=`Tamb_${gv('txtTamb')}_ensayo_${String(ensayoNumero).padStart(3,'0')}.csv`;
+    a.download=`Tamb_${gv('txtTamb')}_trial_${String(ensayoNumero).padStart(3,'0')}.csv`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
 
