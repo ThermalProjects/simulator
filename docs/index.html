@@ -377,7 +377,7 @@ document.addEventListener("DOMContentLoaded", function () {
         const colLabel = _grx - 160;
         const colVal   = _grx;
         mLines.forEach(([label, val], i) => {
-          const y = infoY + i * lineH;
+          const y = 10 + i * lineH;
           if(val === null){
             s.textSize(10); s.fill(s.color(0,60,120));
             s.textAlign(s.RIGHT, s.TOP);
@@ -491,7 +491,7 @@ document.addEventListener("DOMContentLoaded", function () {
     s.textAlign(s.CENTER,s.TOP);
     s.text('Time [s]', gx+gw/2, gy+gh+30);
     s.push(); s.translate(gx-42,gy+gh/2); s.rotate(-Math.PI/2);
-    s.textAlign(s.CENTER,s.CENTER); s.text('Peltier cold face temperature [°C]',0,0); s.pop();
+    s.textAlign(s.CENTER,s.CENTER); s.text('Temperature [°C]',0,0); s.pop();
 
     // Tref line
     if(!showTdew){
