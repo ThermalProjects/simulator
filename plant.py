@@ -6,13 +6,16 @@ class ThreeNodePlant:
         # --------------------------------------------------
         # THERMAL RESISTANCES  [K/W]
         # --------------------------------------------------
-        self.R_cold_amb = 5.976   # Tc ↔ ambient (cold side convection)
+        # R_cold_amb: fitted from real SS data (fan ON, Tc=12.0°C, Tamb=20.52°C, PWM=64)
+        # Previous value 5.976 caused sim to under-cool (SS error ~0.54°C)
+        self.R_cold_amb = 2.717   # K/W  (was 5.976 — fitted from real data)
         self.R_cold_mid = 3.638   # Tc ↔ Tm
         self.R_mid_hot  = 4.670   # Tm ↔ Th
 
         # Hot side to ambient — fan modulates this
-        self.R_hot_fan_on  = 1.04   # K/W  (measured, fan=255)
-        self.R_hot_fan_off = 1.84   # K/W  (measured, fan=0)
+        # R_hot_fan_off: fitted from real SS data (fan OFF, Tc=13.67°C, Tamb=20.77°C, PWM=119.7)
+        self.R_hot_fan_on  =  1.04   # K/W  (measured, fan=255)
+        self.R_hot_fan_off = 13.89   # K/W  (was 1.84 — fitted from real data)
 
         # --------------------------------------------------
         # THERMAL CAPACITANCES  [J/K]
