@@ -28,7 +28,7 @@ class ThreeNodePlant:
         # PELTIER SMOOTHING TIME CONSTANT  [s]
         # θ identified experimentally from real plant data
         # --------------------------------------------------
-        self.tau = 0.302829
+        self.tau = 8.0     # empirically calibrated from real rise time
 
         # --------------------------------------------------
         # STATE
