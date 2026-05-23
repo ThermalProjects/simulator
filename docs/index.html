@@ -73,10 +73,56 @@
       left: 270px;
       top: 0;
       right: 0;
-      bottom: 0;
+      bottom: 60px;
     }
 
     canvas { display: block; }
+
+    #footer-info {
+      position: fixed;
+      left: 270px;
+      bottom: 0;
+      right: 0;
+      height: 60px;
+      background: rgba(240,240,255,0.97);
+      border-top: 2px solid #99b;
+      display: flex;
+      align-items: center;
+      padding: 0 28px;
+      z-index: 10;
+      transition: background 0.25s;
+    }
+    #footer-info.active { background: rgba(220,232,255,0.99); }
+    #footer-default {
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: #aaa;
+      font-style: italic;
+    }
+    #footer-hint { display: none; flex-direction: column; gap: 3px; }
+    #footer-hint .hint-title {
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      font-weight: bold;
+      color: #003090;
+    }
+    #footer-hint .hint-body {
+      font-family: 'Courier New', monospace;
+      font-size: 11.5px;
+      color: #333;
+      line-height: 1.5;
+    }
+    #footer-hint .hint-tag {
+      display: inline-block;
+      background: #dde8ff;
+      border: 1px solid #99b;
+      border-radius: 3px;
+      padding: 1px 7px;
+      font-size: 10px;
+      color: #446;
+      margin-left: 10px;
+      vertical-align: middle;
+    }
   </style>
 </head>
 <body>
@@ -88,7 +134,7 @@
   </div>
 
   <label>Setpoint Temp (°C)</label>
-  <input id="txtTref" type="text" value="15.0"/>
+  <input id="txtTref" type="text" value="25.0"/>
 
   <label>Kp</label>
   <input id="txtKp" type="text" value="58.93"/>
@@ -119,6 +165,14 @@
 </div>
 
 <div id="canvas-container"></div>
+
+<div id="footer-info">
+  <div id="footer-default">Click any parameter to see its effect on the controller response</div>
+  <div id="footer-hint">
+    <span class="hint-title" id="hint-title"></span>
+    <span class="hint-body" id="hint-body"></span>
+  </div>
+</div>
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
@@ -283,24 +337,29 @@ document.addEventListener("DOMContentLoaded", function () {
       Tdew       = s.lerp(prevTdew,       nextTdew,       ratio);
       pwmPeltier = s.lerp(prevPwmPeltier, nextPwmPeltier, ratio);
 
+      // Compute graph left edge for alignment
+      const _fullW = s.width - 60 - 20;
+      const _gw    = _fullW * 0.90;
+      const _gx    = 60 + (_fullW - _gw) / 2;
+
       // Title
       s.textSize(22); s.fill(C.title()); s.textAlign(s.LEFT,s.TOP); s.noStroke();
-      s.text('Fractional PID Thermal System Simulator', 10, 10);
+      s.text('Fractional PID Thermal System Simulator', _gx, 10);
 
       // Info readouts (no parameters shown here)
       const infoY=50;
       s.textSize(13); s.fill(C.text()); s.textAlign(s.LEFT,s.TOP);
-      s.text(`Cell temperature:    ${s.nf(Tsup,1,2)} °C`,     10, infoY);
-      s.text(`Ambient temperature: ${gv('txtTamb')} °C`,       10, infoY+18);
-      s.text(`Dew point temp:      ${s.nf(Tdew,1,2)} °C`,     10, infoY+36);
-      s.text(`PWM Peltier:         ${s.nf(pwmPeltier,1,0)}`,   10, infoY+54);
+      s.text(`Cell temperature:    ${s.nf(Tsup,1,2)} °C`,     _gx, infoY);
+      s.text(`Ambient temperature: ${gv('txtTamb')} °C`,       _gx, infoY+18);
+      s.text(`Dew point temp:      ${s.nf(Tdew,1,2)} °C`,     _gx, infoY+36);
+      s.text(`PWM Peltier:         ${s.nf(pwmPeltier,1,0)}`,   _gx, infoY+54);
 
       // Trial timer
       if(isLogging){
         const elapsed=Math.floor((Date.now()-startTime)/1000);
         s.fill(C.text());
-        s.text(`Trial nº: ${ensayoNumero}`,                       10, infoY+72);
-        s.text(`Time: ${elapsed} s / ${ensayoDuracion} s`,        10, infoY+90);
+        s.text(`Trial nº: ${ensayoNumero}`,                       _gx, infoY+72);
+        s.text(`Time: ${elapsed} s / ${ensayoDuracion} s`,        _gx, infoY+90);
         if(elapsed>=ensayoDuracion){
           isLogging=false; justFinished=true;
           g('btnStart').textContent='Start trial';
@@ -316,7 +375,6 @@ document.addEventListener("DOMContentLoaded", function () {
         justFinished=false;
         // Capture snapshot BEFORE downloading so canvas is still populated
         captureAndSave(s);
-        downloadCSV();
       }
     };
 
@@ -326,7 +384,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // Original margins: gx=60, gy=150, right=20, bottom=70
   // Scale gw/gh by 0.8, keep origin roughly centered
   function drawGraph(s, C){
-    const scaleFactor = 0.80;
+    const scaleFactor = 0.90;
 
     // Full available area
     const fullW = s.width  - 60 - 20;
@@ -423,17 +481,75 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // ── Screenshot export ────────────────────────────────
-  // Renders the graph + params into an offscreen canvas and saves as PNG
+  // ── Screenshot export with metrics report ──────────
+  function calcMetrics(tsup, tref, times){
+    if(!tsup || tsup.length < 2) return null;
+    const n = tsup.length;
+
+    // RMSE
+    let sumSq = 0;
+    tsup.forEach(v => sumSq += (v - tref)**2);
+    const rmse = Math.sqrt(sumSq / n);
+
+    // MAE
+    let sumAbs = 0;
+    tsup.forEach(v => sumAbs += Math.abs(v - tref));
+    const mae = sumAbs / n;
+
+    // Overshoot: max exceedance beyond setpoint in cooling direction
+    // (if cooling: undershoot = going below tref)
+    const cooling = tsup[0] > tref;
+    let overshoot = 0, undershoot = 0;
+    tsup.forEach(v => {
+      if(cooling){
+        const under = tref - v;  // positive = below setpoint
+        if(under > undershoot) undershoot = under;
+        const over  = v - tsup[tsup.length-1]; // above final
+        if(over  > overshoot)  overshoot  = over;
+      } else {
+        const over  = v - tref;
+        if(over  > overshoot)  overshoot  = over;
+        const under = tref - v;
+        if(under > undershoot) undershoot = under;
+      }
+    });
+
+    // Steady-state error: mean of last 10% of samples
+    const tail = tsup.slice(-Math.max(1, Math.floor(n*0.1)));
+    const ssMean = tail.reduce((a,b)=>a+b,0)/tail.length;
+    const ssError = Math.abs(ssMean - tref);
+
+    // Rise time: time from 10% to 90% of total change
+    const T0   = tsup[0];
+    const Tfin = ssMean;
+    const span = Math.abs(Tfin - T0);
+    let t10 = null, t90 = null;
+    for(let i=0;i<tsup.length;i++){
+      const prog = Math.abs(tsup[i] - T0) / (span||1);
+      if(t10===null && prog >= 0.10) t10 = times[i];
+      if(t90===null && prog >= 0.90) t90 = times[i];
+    }
+    const riseTime = (t10!==null && t90!==null) ? (t90 - t10) : null;
+
+    // Settling time: last time |error| > 2% of span
+    const band = 0.02 * (span||1);
+    let settlingTime = null;
+    for(let i=tsup.length-1;i>=0;i--){
+      if(Math.abs(tsup[i]-Tfin) > band){ settlingTime = times[i]; break; }
+    }
+
+    return { rmse, mae, overshoot, undershoot, ssError, riseTime, settlingTime };
+  }
+
   function captureAndSave(s){
-    // Get the p5 canvas element
     const p5canvas = document.querySelector('#canvas-container canvas');
     if(!p5canvas){ return; }
 
-    // Create an offscreen canvas that includes both the right-side graph
-    // AND a params summary panel on the right
-    const imgW = p5canvas.width + 320;
-    const imgH = p5canvas.height;
+    const metrics = calcMetrics(histTsup, Tref, histTime);
+
+    const panelW = 340;
+    const imgW   = p5canvas.width + panelW;
+    const imgH   = Math.max(p5canvas.height, 600);
 
     const offscreen = document.createElement('canvas');
     offscreen.width  = imgW;
@@ -441,78 +557,96 @@ document.addEventListener("DOMContentLoaded", function () {
     const ctx = offscreen.getContext('2d');
 
     // Background
-    ctx.fillStyle = '#f5f5f5';
+    ctx.fillStyle = '#f0f2f8';
     ctx.fillRect(0, 0, imgW, imgH);
 
-    // Draw the p5 canvas on the left
+    // p5 canvas
     ctx.drawImage(p5canvas, 0, 0);
 
-    // Draw params panel on the right
-    const px = p5canvas.width + 10;
+    // Panel background
+    const px = p5canvas.width;
     ctx.fillStyle = '#fff';
-    ctx.strokeStyle = '#ccc';
+    ctx.fillRect(px, 0, panelW, imgH);
+    ctx.strokeStyle = '#b0b8cc';
     ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(px, 10, 300, 300, 6);
-    ctx.fill();
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px,0); ctx.lineTo(px,imgH); ctx.stroke();
 
-    ctx.font = 'bold 14px "Courier New", monospace';
-    ctx.fillStyle = '#003090';
-    ctx.fillText('Trial Parameters', px + 14, 36);
+    const col = px + 18;
+    let cy = 28;
 
-    const params = [
-      ['Setpoint Temp (°C)', gv('txtTref')],
-      ['Kp',                 gv('txtKp')],
-      ['Ki',                 gv('txtKi')],
-      ['Kd',                 gv('txtKd')],
-      ['λ (lambda)',          gv('txtLam')],
-      ['μ (mu)',              gv('txtMu')],
-      ['Duration [s]',       gv('txtDuracion')],
-      ['Ambient Temp (°C)',   gv('txtTamb')],
-      ['Rel. Humidity (%)',   gv('txtRH')],
-      ['Trial nº',           String(ensayoNumero)],
-    ];
+    // Helper draw functions
+    function sectionTitle(text){
+      ctx.fillStyle = '#001a60';
+      ctx.font = 'bold 13px "Courier New", monospace';
+      ctx.fillText(text, col, cy);
+      cy += 6;
+      ctx.strokeStyle = '#99aacc';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(col, cy); ctx.lineTo(px+panelW-18, cy); ctx.stroke();
+      cy += 14;
+    }
+    function row(label, value, unit='', highlight=false){
+      ctx.font = '11px "Courier New", monospace';
+      ctx.fillStyle = highlight ? '#440088' : '#555';
+      ctx.fillText(label, col, cy);
+      ctx.font = highlight ? 'bold 11px "Courier New", monospace' : '11px "Courier New", monospace';
+      ctx.fillStyle = highlight ? '#440088' : '#111';
+      ctx.fillText(value + (unit ? ' '+unit : ''), col + 175, cy);
+      cy += 18;
+    }
+    function gap(n=8){ cy += n; }
 
-    ctx.font = '13px "Courier New", monospace';
-    ctx.fillStyle = '#222';
-    params.forEach(([label, val], i) => {
-      const yy = 60 + i * 22;
-      ctx.fillStyle = '#555';
-      ctx.fillText(label + ':', px + 14, yy);
-      ctx.fillStyle = '#220066';
-      ctx.fillText(val, px + 190, yy);
-    });
+    // Title
+    ctx.fillStyle = '#001a60';
+    ctx.font = 'bold 15px "Courier New", monospace';
+    ctx.fillText('FOPID Trial Report', col, cy); cy += 22;
+    ctx.font = '10px "Courier New", monospace';
+    ctx.fillStyle = '#888';
+    const now = new Date();
+    ctx.fillText(now.toLocaleString(), col, cy); cy += 24;
 
-    // Save as PNG
+    // Parameters section
+    sectionTitle('CONTROLLER PARAMETERS');
+    row('Setpoint Tref',     gv('txtTref'),    '°C', true);
+    row('Kp',                gv('txtKp'),      '');
+    row('Ki',                gv('txtKi'),      '');
+    row('Kd',                gv('txtKd'),      '');
+    row('λ (lambda)',         gv('txtLam'),     '');
+    row('μ (mu)',             gv('txtMu'),      '');
+    gap();
+
+    sectionTitle('TEST CONDITIONS');
+    row('Ambient Temp',      gv('txtTamb'),    '°C');
+    row('Rel. Humidity',     gv('txtRH'),      '%');
+    row('Duration',          gv('txtDuracion'),'s');
+    row('Trial nº',          String(ensayoNumero), '');
+    row('Samples',           String(histTsup.length), '');
+    gap();
+
+    sectionTitle('PERFORMANCE METRICS');
+    if(metrics){
+      row('RMSE',            metrics.rmse.toFixed(3),       '°C', true);
+      row('MAE',             metrics.mae.toFixed(3),        '°C', true);
+      row('Overshoot',       metrics.overshoot.toFixed(3),  '°C');
+      row('Undershoot',      metrics.undershoot.toFixed(3), '°C');
+      row('Steady-state err',metrics.ssError.toFixed(3),    '°C', true);
+      row('Rise time (10→90%)', metrics.riseTime!==null ? metrics.riseTime.toFixed(1) : 'N/A', 's');
+      row('Settling time (2%)', metrics.settlingTime!==null ? metrics.settlingTime.toFixed(1) : 'N/A', 's');
+    } else {
+      ctx.font = '11px "Courier New", monospace';
+      ctx.fillStyle = '#999';
+      ctx.fillText('No data available', col, cy); cy+=18;
+    }
+
     offscreen.toBlob(blob => {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `Tamb_${gv('txtTamb')}_trial_${String(ensayoNumero).padStart(3,'0')}.png`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      a.download = `FOPID_Tamb${gv('txtTamb')}_Tref${gv('txtTref')}_trial${String(ensayoNumero).padStart(3,'0')}.png`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
     }, 'image/png');
   }
 
-  // ── CSV export ────────────────────────────────────────
-  function downloadCSV(){
-    let csv='Time,Tamb,Tsup,Tdew,RH,Tref,PWM_Peltier,PWM_Fan,Kp,Ki,Kd,Lambda,Mu\n';
-    for(let i=0;i<histTime.length;i++){
-      csv+=[
-        histTime[i].toFixed(2),
-        gv('txtTamb'), histTsup[i].toFixed(4), histTdew[i].toFixed(4),
-        gv('txtRH'), Tref,
-        histPeltier[i].toFixed(2), histFan[i].toFixed(2),
-        gv('txtKp'),gv('txtKi'),gv('txtKd'),gv('txtLam'),gv('txtMu')
-      ].join(',')+'\n';
-    }
-    const blob=new Blob([csv],{type:'text/csv'});
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(blob);
-    a.download=`Tamb_${gv('txtTamb')}_trial_${String(ensayoNumero).padStart(3,'0')}.csv`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  }
+  
 
 }); // DOMContentLoaded
 </script>
