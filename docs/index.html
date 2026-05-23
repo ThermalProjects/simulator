@@ -418,11 +418,13 @@ s.text(`${s.nf(pwmPeltier,1,0)}`,      vx, infoY+54);
           setStatus('connected','Connected');
         }
       }
-
+      
       drawGraph(s, C);
-
       if(justFinished){
         justFinished=false;
+        // Capture snapshot BEFORE downloading so canvas is still populated
+        captureAndSave(s);
+        downloadCSV();
       }
     };
 
