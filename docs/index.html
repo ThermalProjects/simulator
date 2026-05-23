@@ -366,32 +366,36 @@ document.addEventListener("DOMContentLoaded", function () {
         const _grx    = 60 + (_fullW2 - _gw2) / 2 + _gw2; // right edge of graph
         const mLines = [
           ['TRIAL METRICS', null],
-          ['RMSE',          trialMetrics.rmse.toFixed(3) + ' °C'],
-          ['MAE',           trialMetrics.mae.toFixed(3)  + ' °C'],
-          ['Undershoot',    trialMetrics.undershoot.toFixed(3) + ' °C'],
-          ['SS error',      trialMetrics.ssError.toFixed(3) + ' °C'],
-          ['Rise time',     (trialMetrics.riseTime!==null?trialMetrics.riseTime.toFixed(1):'N/A') + ' s'],
-          ['Settling',      (trialMetrics.settlingTime!==null?trialMetrics.settlingTime.toFixed(1):'N/A') + ' s'],
+          ['RMSE',       trialMetrics.rmse.toFixed(3) + ' °C'],
+          ['MAE',        trialMetrics.mae.toFixed(3)  + ' °C'],
+          ['Undershoot', trialMetrics.undershoot.toFixed(3) + ' °C'],
+          ['SS error',   trialMetrics.ssError.toFixed(3) + ' °C'],
+          ['Rise time',  (trialMetrics.riseTime!==null?trialMetrics.riseTime.toFixed(1):'N/A') + ' s'],
+          ['Settling',   (trialMetrics.settlingTime!==null?trialMetrics.settlingTime.toFixed(1):'N/A') + ' s'],
         ];
         const lineH = 17;
-        const totalH = mLines.length * lineH + 6;
-        s.textAlign(s.RIGHT, s.TOP);
+        const colLabel = _grx - 160;
+        const colVal   = _grx;
         mLines.forEach(([label, val], i) => {
           const y = infoY + i * lineH;
           if(val === null){
             s.textSize(10); s.fill(s.color(0,60,120));
-            s.text('── TRIAL METRICS ──', _grx, y);
+            s.textAlign(s.RIGHT, s.TOP);
+            s.text('── TRIAL METRICS ──', colVal, y);
           } else {
-            s.textSize(11); s.fill(s.color(80,80,80));
-            s.text(label + ':', _grx - 90, y);
-            s.fill(s.color(20,20,20)); s.textAlign(s.RIGHT, s.TOP);
-            s.text(val, _grx, y);
+            s.textSize(11);
+            s.textAlign(s.LEFT, s.TOP);
+            s.fill(s.color(90,90,90));
+            s.text(label, colLabel, y);
+            s.textAlign(s.RIGHT, s.TOP);
+            s.fill(s.color(20,20,20));
+            s.text(val, colVal, y);
           }
         });
         s.textAlign(s.LEFT, s.TOP);
       }
 
-      // Trial timer
+            // Trial timer
       if(isLogging){
         const elapsed=Math.floor((Date.now()-startTime)/1000);
         s.fill(C.text());
