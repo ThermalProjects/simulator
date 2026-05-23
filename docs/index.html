@@ -57,7 +57,6 @@
     #btnStart       { background: #87ceeb; color: #003050; }
     #btnStart.active{ background: #b43232; color: #fff; }
     #btnMode        { background: #6495ed; color: #fff; }
-    #btnReport      { background: #5a9a6e; color: #fff; display: none; }
 
     #status-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
     #status-dot {
@@ -163,7 +162,6 @@
 
   <button class="btn" id="btnStart">Start trial</button>
   <button class="btn" id="btnMode">Mode: Setpoint</button>
-  <button class="btn" id="btnReport">Download report</button>
 </div>
 
 <div id="canvas-container"></div>
@@ -245,7 +243,7 @@ document.addEventListener("DOMContentLoaded", function () {
   let Tsup=20, Tdew=0, Tref=25;
   let nextTamb=20, nextTsup=20, nextRH=70, nextTdew=0;
   let pwmFan=0;
-  let isLogging=false, startTime=0, reportReady=false;
+  let isLogging=false, startTime=0;
   let trialMetrics=null;
   let ensayoNumero=0, ensayoDuracion=300;
   let showTdew=false, justFinished=false;
@@ -276,7 +274,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const mu       = gf('txtMu',1.47);
 
       isLogging=true; startTime=Date.now(); ensayoNumero++;
-      reportReady=false; trialMetrics=null; document.getElementById('btnReport').style.display='none';
+      trialMetrics=null;
       histTsup=[]; histTdew=[]; histPeltier=[]; histFan=[]; histTime=[];
       prevTsup=nextTsup=Tambv;
       prevTdew=nextTdew=0;
@@ -291,9 +289,7 @@ document.addEventListener("DOMContentLoaded", function () {
       isLogging=false;
       sendMsg('STOP\n');
       justFinished=true;
-      reportReady=true;
       trialMetrics=calcMetrics(histTsup, Tref, histTime);
-      document.getElementById('btnReport').style.display='';
       g('btnStart').textContent='Start trial';
       g('btnStart').classList.remove('active');
       setStatus('connected','Connected');
@@ -363,19 +359,36 @@ document.addEventListener("DOMContentLoaded", function () {
       s.text(`Dew point temp:      ${s.nf(Tdew,1,2)} °C`,     _gx, infoY+36);
       s.text(`PWM Peltier:         ${s.nf(pwmPeltier,1,0)}`,   _gx, infoY+54);
 
-      // Metrics column (shown after trial ends)
+      // Metrics column — top-right corner, aligned with graph right edge
       if(trialMetrics && !isLogging){
-        const mx = _gx + 280;
-        s.textSize(11); s.fill(s.color(0,60,120)); s.textAlign(s.LEFT,s.TOP);
-        s.text('── TRIAL METRICS ──', mx, infoY);
-        s.textSize(12); s.fill(C.text());
-        s.text(`RMSE:          ${trialMetrics.rmse.toFixed(3)} °C`,           mx, infoY+16);
-        s.text(`MAE:           ${trialMetrics.mae.toFixed(3)} °C`,            mx, infoY+32);
-        s.text(`Overshoot:     ${trialMetrics.overshoot.toFixed(3)} °C`,      mx, infoY+48);
-        s.text(`Undershoot:    ${trialMetrics.undershoot.toFixed(3)} °C`,     mx, infoY+64);
-        s.text(`SS error:      ${trialMetrics.ssError.toFixed(3)} °C`,        mx, infoY+80);
-        s.text(`Rise time:     ${trialMetrics.riseTime!==null?trialMetrics.riseTime.toFixed(1):'N/A'} s`,     mx, infoY+96);
-        s.text(`Settling time: ${trialMetrics.settlingTime!==null?trialMetrics.settlingTime.toFixed(1):'N/A'} s`, mx, infoY+112);
+        const _fullW2 = s.width - 60 - 20;
+        const _gw2    = _fullW2 * 0.90;
+        const _grx    = 60 + (_fullW2 - _gw2) / 2 + _gw2; // right edge of graph
+        const mLines = [
+          ['TRIAL METRICS', null],
+          ['RMSE',          trialMetrics.rmse.toFixed(3) + ' °C'],
+          ['MAE',           trialMetrics.mae.toFixed(3)  + ' °C'],
+          ['Undershoot',    trialMetrics.undershoot.toFixed(3) + ' °C'],
+          ['SS error',      trialMetrics.ssError.toFixed(3) + ' °C'],
+          ['Rise time',     (trialMetrics.riseTime!==null?trialMetrics.riseTime.toFixed(1):'N/A') + ' s'],
+          ['Settling',      (trialMetrics.settlingTime!==null?trialMetrics.settlingTime.toFixed(1):'N/A') + ' s'],
+        ];
+        const lineH = 17;
+        const totalH = mLines.length * lineH + 6;
+        s.textAlign(s.RIGHT, s.TOP);
+        mLines.forEach(([label, val], i) => {
+          const y = infoY + i * lineH;
+          if(val === null){
+            s.textSize(10); s.fill(s.color(0,60,120));
+            s.text('── TRIAL METRICS ──', _grx, y);
+          } else {
+            s.textSize(11); s.fill(s.color(80,80,80));
+            s.text(label + ':', _grx - 90, y);
+            s.fill(s.color(20,20,20)); s.textAlign(s.RIGHT, s.TOP);
+            s.text(val, _grx, y);
+          }
+        });
+        s.textAlign(s.LEFT, s.TOP);
       }
 
       // Trial timer
@@ -386,9 +399,7 @@ document.addEventListener("DOMContentLoaded", function () {
         s.text(`Time: ${elapsed} s / ${ensayoDuracion} s`,        _gx, infoY+90);
         if(elapsed>=ensayoDuracion){
           isLogging=false; justFinished=true;
-          reportReady=true;
           trialMetrics=calcMetrics(histTsup, Tref, histTime);
-          document.getElementById('btnReport').style.display='';
           g('btnStart').textContent='Start trial';
           g('btnStart').classList.remove('active');
           sendMsg('STOP\n');
@@ -400,8 +411,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
       if(justFinished){
         justFinished=false;
-        reportReady=true;
-        document.getElementById('btnReport').style.display='';
       }
     };
 
@@ -654,7 +663,6 @@ document.addEventListener("DOMContentLoaded", function () {
     if(metrics){
       row('RMSE',            metrics.rmse.toFixed(3),       '°C', true);
       row('MAE',             metrics.mae.toFixed(3),        '°C', true);
-      row('Overshoot',       metrics.overshoot.toFixed(3),  '°C');
       row('Undershoot',      metrics.undershoot.toFixed(3), '°C');
       row('Steady-state err',metrics.ssError.toFixed(3),    '°C', true);
       row('Rise time (10→90%)', metrics.riseTime!==null ? metrics.riseTime.toFixed(1) : 'N/A', 's');
@@ -740,10 +748,6 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
 
-  // ── Download report button ───────────────────────────
-  document.getElementById('btnReport').addEventListener('click', () => {
-    if(reportReady) captureAndSave();
-  });
 
 }); // DOMContentLoaded
 </script>
