@@ -8,7 +8,6 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
-    /* Prevent any responsive collapse — minimum usable width */
     html { overflow-x: auto; }
     body {
       background: #f5f5f5;
@@ -21,22 +20,19 @@
       position: fixed; top: 0; left: 0;
       width: 270px; height: 100vh;
       background: rgba(245,245,245,0.97);
-      /* no border-right */
-      padding: 16px;
-      display: flex; flex-direction: column; gap: 6px;
-      overflow-x: hidden;   /* never show horizontal scrollbar */
-      overflow-y: auto;
+      padding: 10px 16px;
+      display: flex; flex-direction: column; gap: 3px;
+      overflow: hidden;   /* no scrollbar ever */
       z-index: 10;
     }
-    /* Make sidebar inputs never overflow their container */
     #sidebar * { max-width: 100%; }
 
     #sidebar label {
-      font-size: 12px; color: #333;
-      font-family: 'Courier New', monospace; margin-top: 4px;
+      font-size: 11px; color: #333;
+      font-family: 'Courier New', monospace; margin-top: 2px;
     }
     #sidebar input[type=text] {
-      width: 100%; padding: 5px 8px; font-size: 13px;
+      width: 100%; padding: 3px 8px; font-size: 13px;
       font-family: 'Courier New', monospace;
       background: #dcdcdc; border: 1px solid #aaa;
       color: #222; border-radius: 2px; outline: none;
@@ -44,10 +40,10 @@
     #sidebar input:focus { background: #c8c8c8; }
 
     .btn {
-      width: 100%; padding: 10px 0; font-size: 14px;
+      width: 100%; padding: 8px 0; font-size: 14px;
       font-family: 'Courier New', monospace;
       border: none; border-radius: 3px; cursor: pointer;
-      margin-top: 4px; font-weight: bold;
+      margin-top: 3px; font-weight: bold;
       transition: filter 0.15s, background 0.3s, color 0.3s;
     }
     .btn:hover:not(:disabled) { filter: brightness(0.9); }
@@ -60,7 +56,7 @@
     #btnSave          { background: #aaa;    color: #eee; cursor: not-allowed; }
     #btnSave.ready    { background: #4a9a5e; color: #fff; cursor: pointer; }
 
-    #status-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+    #status-row { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
     #status-dot {
       width: 10px; height: 10px; border-radius: 50%;
       background: #aaa; flex-shrink: 0;
@@ -85,9 +81,46 @@
     #footer-hint    { display: none; flex-direction: column; gap: 3px; }
     #footer-hint .hint-title { font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold; color: #003090; }
     #footer-hint .hint-body  { font-family: 'Courier New', monospace; font-size: 11.5px; color: #333; line-height: 1.5; }
+
+    /* ── Mobile portrait overlay ── */
+    #rotate-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: #111;
+      z-index: 9999;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+    }
+    #rotate-overlay svg {
+      width: 64px; height: 64px;
+      animation: rotateHint 2s ease-in-out infinite;
+    }
+    @keyframes rotateHint {
+      0%,100% { transform: rotate(0deg); }
+      50%      { transform: rotate(90deg); }
+    }
+    #rotate-overlay p {
+      color: #ccc;
+      font-family: 'Courier New', monospace;
+      font-size: 15px;
+      text-align: center;
+      line-height: 1.6;
+    }
   </style>
 </head>
 <body>
+
+<!-- Mobile portrait blocker -->
+<div id="rotate-overlay">
+  <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="18" y="8" width="28" height="48" rx="4" stroke="#ccc" stroke-width="3"/>
+    <circle cx="32" cy="50" r="2.5" fill="#ccc"/>
+    <path d="M44 20 L54 14 M54 14 L54 24 M54 14 L44 14" stroke="#e8a020" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>
+  <p>Please rotate your device<br>to landscape mode</p>
+</div>
 
 <div id="sidebar">
   <div id="status-row">
@@ -132,6 +165,16 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
+
+  // ── Mobile portrait detection ──────────────────────────
+  const overlay = document.getElementById('rotate-overlay');
+  function checkOrientation(){
+    const portrait = window.innerWidth < window.innerHeight;
+    overlay.style.display = portrait ? 'flex' : 'none';
+  }
+  checkOrientation();
+  window.addEventListener('resize', checkOrientation);
+  window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 100));
 
   const WS_URL = "wss://simulator-z13i.onrender.com";
   let ws = null, wsConnected = false;
@@ -199,7 +242,7 @@ document.addEventListener("DOMContentLoaded", function () {
   let trialMetrics=null;
   let ensayoNumero=0, ensayoDuracion=300;
   let showTdew=false, justFinished=false;
-  let fanOn=false;   // client default: fan OFF
+  let fanOn=false;
   let energyJ=0;
   let histTsup=[], histTdew=[], histPeltier=[], histFan=[], histTime=[];
   let prevTsup=20, prevTdew=0;
@@ -236,7 +279,6 @@ document.addEventListener("DOMContentLoaded", function () {
       prevTsup=nextTsup=Tambv; prevTdew=nextTdew=0;
       prevPwmPeltier=nextPwmPeltier=0; interpTimer=0;
 
-      // Include fan state (field 10) so server syncs immediately
       const fanFlag = fanOn ? 1 : 0;
       sendMsg(`START,${Tref},${Kp},${Ki},${Kd},${lam},${mu},${ensayoDuracion},${Tambv},${RHv},${fanFlag}\n`);
       g('btnStart').textContent='Stop trial';
@@ -315,7 +357,6 @@ document.addEventListener("DOMContentLoaded", function () {
       pwmPeltier = s.lerp(prevPwmPeltier, nextPwmPeltier, ratio);
       Th         = s.lerp(Th,             nextTh,         ratio);
 
-      // Graph geometry (shared for alignment)
       const _fullW = s.width - 60 - 20;
       const _gw    = _fullW * 0.90;
       const _gx    = 60 + (_fullW - _gw) / 2;
@@ -328,46 +369,36 @@ document.addEventListener("DOMContentLoaded", function () {
       s.text('Peltier cell thermal control  ·  FOPID controller', _gx, 36);
 
       // ── Readouts: two columns
-      // Column 1 (left): temperature readings
-      // Column 2 (right): control/trial info
-      // Both sit between title and graph, aligned to graph edges
-
       const infoY  = 56;
       const rowH   = 18;
       const lblCol1 = _gx;
       const valCol1 = _gx + 210;
-      // Column 2 starts at center of graph area
       const col2X   = _gx + _gw * 0.50;
       const valCol2 = col2X + 170;
 
       s.textSize(13); s.noStroke();
 
-      // — Column 1 labels
       s.fill(s.color(80,80,80)); s.textAlign(s.LEFT,s.TOP);
       s.text('Cold face temp:',  lblCol1, infoY);
       s.text('Hot face temp:',   lblCol1, infoY + rowH);
       s.text('Ambient temp:',    lblCol1, infoY + rowH*2);
       s.text('Dew point:',       lblCol1, infoY + rowH*3);
 
-      // — Column 1 values
       s.fill(C.text()); s.textAlign(s.LEFT,s.TOP);
       s.text(`${s.nf(Tsup,1,2)} °C`,     valCol1, infoY);
       s.text(`${s.nf(Th,1,2)} °C`,       valCol1, infoY + rowH);
       s.text(`${gv('txtTamb')} °C`,       valCol1, infoY + rowH*2);
       s.text(`${s.nf(Tdew,1,2)} °C`,     valCol1, infoY + rowH*3);
 
-      // — Column 2 labels
       s.fill(s.color(80,80,80)); s.textAlign(s.LEFT,s.TOP);
       s.text('PWM Peltier:',  col2X, infoY);
       s.text('Fan:',          col2X, infoY + rowH);
       s.text('Trial nº:',     col2X, infoY + rowH*2);
       s.text('Time:',         col2X, infoY + rowH*3);
 
-      // — Column 2 values
       s.fill(C.text()); s.textAlign(s.LEFT,s.TOP);
       s.text(`${s.nf(pwmPeltier,1,0)}`, valCol2, infoY);
 
-      // Fan indicator with colour
       if(fanOn){
         s.fill(s.color(200,120,0));
         s.text('ON  (255 PWM)', valCol2, infoY + rowH);
@@ -397,7 +428,6 @@ document.addEventListener("DOMContentLoaded", function () {
         s.fill(C.text());
       }
 
-      // ── Metrics top-right after trial
       if(trialMetrics && !isLogging){
         const mLines = [
           ['── TRIAL METRICS ──', null],
@@ -447,7 +477,6 @@ document.addEventListener("DOMContentLoaded", function () {
     s.fill(C.panel()); s.stroke(C.border()); s.strokeWeight(1);
     s.rect(gx, gy, gw, gh, 6);
 
-    // Legend
     const lx=gx+15, ly=gy+14, lsz=11;
     s.noStroke(); s.fill(C.green()); s.rect(lx,ly,lsz,lsz);
     s.fill(C.text()); s.textSize(11); s.textAlign(s.LEFT,s.CENTER);
@@ -460,7 +489,6 @@ document.addEventListener("DOMContentLoaded", function () {
       s.fill(C.text()); s.text('Tref', lx+140+lsz+4, ly+lsz/2);
     }
 
-    // Y grid
     s.stroke(C.gridLine()); s.strokeWeight(1);
     for(let i=0;i<=yLines;i++){
       const y=gy+gh-i*gh/yLines;
@@ -476,7 +504,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const tStart=histTime[0];
     const tEnd=Math.max(histTime[histTime.length-1], tStart+1);
 
-    // X grid
     for(let i=0;i<=xLines;i++){
       const xVal=s.lerp(tStart,tEnd,i/xLines);
       const x=s.map(xVal,tStart,tEnd,gx,gx+gw);
@@ -486,23 +513,20 @@ document.addEventListener("DOMContentLoaded", function () {
       s.text(xVal.toFixed(0), x, gy+gh+4);
     }
 
-    // Axis labels
     s.fill(C.text()); s.noStroke(); s.textSize(13);
     s.textAlign(s.CENTER,s.TOP);
     s.text('Time [s]', gx+gw/2, gy+gh+30);
     s.push(); s.translate(gx-42,gy+gh/2); s.rotate(-Math.PI/2);
     s.textAlign(s.CENTER,s.CENTER);
-    s.text('Temperature [°C]',0,0);
+    s.text('Peltier cold face temperature [°C]',0,0);
     s.pop();
 
-    // Tref line
     if(!showTdew){
       s.stroke(C.blue()); s.strokeWeight(1.5);
       const yRef=s.map(Tref,0,tMax,gy+gh,gy);
       s.line(gx,yRef,gx+gw,yRef);
     }
 
-    // Tsup curve
     s.stroke(C.green()); s.strokeWeight(2); s.noFill(); s.beginShape();
     for(let i=0;i<histTsup.length;i++){
       const x=s.constrain(s.map(histTime[i],tStart,tEnd,gx,gx+gw),gx,gx+gw);
@@ -511,7 +535,6 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     s.endShape();
 
-    // Tdew curve
     if(showTdew){
       s.stroke(C.magenta()); s.strokeWeight(1.5); s.noFill(); s.beginShape();
       for(let i=0;i<histTdew.length;i++){
@@ -587,7 +610,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const p5canvas=document.querySelector('#canvas-container canvas');
     if(!p5canvas) return;
     const m=trialMetrics;
-    // Wider report panel: 360px instead of 300px
     const panelW=360, imgW=p5canvas.width+panelW, imgH=p5canvas.height;
     const off=document.createElement('canvas');
     off.width=imgW; off.height=imgH;
