@@ -51,12 +51,14 @@
       cursor: pointer;
       margin-top: 4px;
       font-weight: bold;
-      transition: filter 0.15s;
+      transition: filter 0.15s, background 0.3s, color 0.3s;
     }
     .btn:hover { filter: brightness(0.9); }
-    #btnStart       { background: #87ceeb; color: #003050; }
-    #btnStart.active{ background: #b43232; color: #fff; }
-    #btnMode        { background: #6495ed; color: #fff; }
+    #btnStart        { background: #87ceeb; color: #003050; }
+    #btnStart.active { background: #b43232; color: #fff; }
+    #btnMode         { background: #6495ed; color: #fff; }
+    #btnSave         { background: #aaa; color: #eee; cursor: not-allowed; }
+    #btnSave.ready   { background: #4a9a5e; color: #fff; cursor: pointer; }
 
     #status-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
     #status-dot {
@@ -112,17 +114,6 @@
       color: #333;
       line-height: 1.5;
     }
-    #footer-hint .hint-tag {
-      display: inline-block;
-      background: #dde8ff;
-      border: 1px solid #99b;
-      border-radius: 3px;
-      padding: 1px 7px;
-      font-size: 10px;
-      color: #446;
-      margin-left: 10px;
-      vertical-align: middle;
-    }
   </style>
 </head>
 <body>
@@ -162,6 +153,7 @@
 
   <button class="btn" id="btnStart">Start trial</button>
   <button class="btn" id="btnMode">Mode: Setpoint</button>
+  <button class="btn" id="btnSave" disabled>Save report</button>
 </div>
 
 <div id="canvas-container"></div>
@@ -240,7 +232,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ── State ──────────────────────────────────────────
   let prevPwmPeltier=0, nextPwmPeltier=0, pwmPeltier=0;
-  let Tsup=20, Tdew=0, Tref=25;
+  let Tsup=20, Tdew=0, Tref=15;
   let nextTamb=20, nextTsup=20, nextRH=70, nextTdew=0;
   let pwmFan=0;
   let isLogging=false, startTime=0;
@@ -252,18 +244,26 @@ document.addEventListener("DOMContentLoaded", function () {
   let interpTimer=0;
   const Tsamp=0.2, interpStep=0.05;
 
-  // Reference to the p5 sketch instance (set below)
-  let p5instance = null;
-
   const g  = id => document.getElementById(id);
   const gv = id => g(id).value.trim();
   const gf = (id,d) => { const v=parseFloat(gv(id)); return isNaN(v)?d:v; };
+
+  function setSaveReady(ready){
+    const btn = g('btnSave');
+    if(ready){
+      btn.classList.add('ready');
+      btn.disabled = false;
+    } else {
+      btn.classList.remove('ready');
+      btn.disabled = true;
+    }
+  }
 
   // ── Buttons ─────────────────────────────────────────
   g('btnStart').addEventListener('click', () => {
     if(!isLogging){
       if(!wsConnected){ alert('Waiting for connection…'); return; }
-      Tref           = gf('txtTref',25);
+      Tref           = gf('txtTref',15);
       ensayoDuracion = gf('txtDuracion',300);
       const Tambv    = gf('txtTamb',20);
       const RHv      = gf('txtRH',70);
@@ -275,6 +275,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       isLogging=true; startTime=Date.now(); ensayoNumero++;
       trialMetrics=null;
+      setSaveReady(false);
       histTsup=[]; histTdew=[]; histPeltier=[]; histFan=[]; histTime=[];
       prevTsup=nextTsup=Tambv;
       prevTdew=nextTdew=0;
@@ -290,6 +291,7 @@ document.addEventListener("DOMContentLoaded", function () {
       sendMsg('STOP\n');
       justFinished=true;
       trialMetrics=calcMetrics(histTsup, Tref, histTime);
+      setSaveReady(true);
       g('btnStart').textContent='Start trial';
       g('btnStart').classList.remove('active');
       setStatus('connected','Connected');
@@ -302,9 +304,14 @@ document.addEventListener("DOMContentLoaded", function () {
     sendMsg(showTdew ? 'MODE_TDEW_ON\n' : 'MODE_TDEW_OFF\n');
   });
 
+  g('btnSave').addEventListener('click', () => {
+    if(!trialMetrics) return;
+    saveCSV();
+    savePNG();
+  });
+
   // ── p5 sketch ────────────────────────────────────────
   new p5(function(s){
-    p5instance = s;
 
     const C = {
       bg:       () => s.color(245),
@@ -340,10 +347,11 @@ document.addEventListener("DOMContentLoaded", function () {
       Tdew       = s.lerp(prevTdew,       nextTdew,       ratio);
       pwmPeltier = s.lerp(prevPwmPeltier, nextPwmPeltier, ratio);
 
-      // Compute graph left edge for alignment
+      // Graph left/right edges for alignment
       const _fullW = s.width - 60 - 20;
       const _gw    = _fullW * 0.90;
       const _gx    = 60 + (_fullW - _gw) / 2;
+      const _grx   = _gx + _gw;
 
       // Title
       s.textSize(22); s.fill(C.title()); s.textAlign(s.LEFT,s.TOP); s.noStroke();
@@ -351,21 +359,27 @@ document.addEventListener("DOMContentLoaded", function () {
       s.textSize(11); s.fill(s.color(100,100,130));
       s.text('Peltier cell thermal control  ·  FOPID controller', _gx, 36);
 
-      // Info readouts (no parameters shown here)
-      const infoY=56;
-      s.textSize(13); s.fill(C.text()); s.textAlign(s.LEFT,s.TOP);
-      s.text(`Cold face temp:      ${s.nf(Tsup,1,2)} °C`,     _gx, infoY);
-      s.text(`Ambient temperature: ${gv('txtTamb')} °C`,       _gx, infoY+18);
-      s.text(`Dew point temp:      ${s.nf(Tdew,1,2)} °C`,     _gx, infoY+36);
-      s.text(`PWM Peltier:         ${s.nf(pwmPeltier,1,0)}`,   _gx, infoY+54);
+      // Info readouts — two-column tabular layout
+      const infoY = 56;
+      const vx    = _gx + 200; // value column
+      s.textSize(13); s.noStroke();
 
-      // Metrics column — top-right corner, aligned with graph right edge
+      s.fill(s.color(80,80,80)); s.textAlign(s.LEFT, s.TOP);
+      s.text('Cold face temperature:', _gx, infoY);
+      s.text('Ambient temperature:',   _gx, infoY+18);
+      s.text('Dew point temperature:', _gx, infoY+36);
+      s.text('PWM Peltier:',           _gx, infoY+54);
+
+      s.fill(C.text()); s.textAlign(s.LEFT, s.TOP);
+      s.text(`${s.nf(Tsup,1,2)} °C`,        vx, infoY);
+      s.text(`${gv('txtTamb')} °C`,          vx, infoY+18);
+      s.text(`${s.nf(Tdew,1,2)} °C`,        vx, infoY+36);
+      s.text(`${s.nf(pwmPeltier,1,0)}`,      vx, infoY+54);
+
+      // Metrics — top-right, aligned with graph right edge
       if(trialMetrics && !isLogging){
-        const _fullW2 = s.width - 60 - 20;
-        const _gw2    = _fullW2 * 0.90;
-        const _grx    = 60 + (_fullW2 - _gw2) / 2 + _gw2; // right edge of graph
         const mLines = [
-          ['TRIAL METRICS', null],
+          ['── TRIAL METRICS ──', null],
           ['RMSE',       trialMetrics.rmse.toFixed(3) + ' °C'],
           ['MAE',        trialMetrics.mae.toFixed(3)  + ' °C'],
           ['Undershoot', trialMetrics.undershoot.toFixed(3) + ' °C'],
@@ -374,36 +388,35 @@ document.addEventListener("DOMContentLoaded", function () {
           ['Settling',   (trialMetrics.settlingTime!==null?trialMetrics.settlingTime.toFixed(1):'N/A') + ' s'],
         ];
         const lineH = 17;
-        const colLabel = _grx - 160;
-        const colVal   = _grx;
         mLines.forEach(([label, val], i) => {
           const y = 10 + i * lineH;
           if(val === null){
             s.textSize(10); s.fill(s.color(0,60,120));
             s.textAlign(s.RIGHT, s.TOP);
-            s.text('── TRIAL METRICS ──', colVal, y);
+            s.text(label, _grx, y);
           } else {
             s.textSize(11);
             s.textAlign(s.LEFT, s.TOP);
             s.fill(s.color(90,90,90));
-            s.text(label, colLabel, y);
+            s.text(label, _grx - 160, y);
             s.textAlign(s.RIGHT, s.TOP);
             s.fill(s.color(20,20,20));
-            s.text(val, colVal, y);
+            s.text(val, _grx, y);
           }
         });
         s.textAlign(s.LEFT, s.TOP);
       }
 
-            // Trial timer
+      // Trial timer
       if(isLogging){
         const elapsed=Math.floor((Date.now()-startTime)/1000);
-        s.fill(C.text());
-        s.text(`Trial nº: ${ensayoNumero}`,                       _gx, infoY+72);
-        s.text(`Time: ${elapsed} s / ${ensayoDuracion} s`,        _gx, infoY+90);
+        s.fill(C.text()); s.textAlign(s.LEFT,s.TOP); s.textSize(13);
+        s.text(`Trial nº: ${ensayoNumero}`,                  _gx, infoY+72);
+        s.text(`Time: ${elapsed} s / ${ensayoDuracion} s`,   _gx, infoY+90);
         if(elapsed>=ensayoDuracion){
           isLogging=false; justFinished=true;
           trialMetrics=calcMetrics(histTsup, Tref, histTime);
+          setSaveReady(true);
           g('btnStart').textContent='Start trial';
           g('btnStart').classList.remove('active');
           sendMsg('STOP\n');
@@ -413,34 +426,22 @@ document.addEventListener("DOMContentLoaded", function () {
 
       drawGraph(s, C);
 
-      if(justFinished){
-        justFinished=false;
-      }
+      if(justFinished) justFinished=false;
     };
 
   }, document.getElementById('canvas-container'));
 
-  // ── Graph (20% smaller) ───────────────────────────────
-  // Original margins: gx=60, gy=150, right=20, bottom=70
-  // Scale gw/gh by 0.8, keep origin roughly centered
+  // ── Graph ─────────────────────────────────────────────
   function drawGraph(s, C){
     const scaleFactor = 0.90;
-
-    // Full available area
     const fullW = s.width  - 60 - 20;
     const fullH = s.height - 150 - 70;
-
-    // Scaled size
     const gw = fullW * scaleFactor;
     const gh = fullH * scaleFactor;
-
-    // Center the smaller graph in the available space
     const offsetX = (fullW - gw) / 2;
     const offsetY = (fullH - gh) / 2;
-
     const gx = 60  + offsetX;
     const gy = 150 + offsetY;
-
     const tMin=0, tMax=40;
     const yLines=8, xLines=6;
 
@@ -521,210 +522,163 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // ── Screenshot export with metrics report ──────────
+  // ── Metrics calculation ───────────────────────────────
   function calcMetrics(tsup, tref, times){
     if(!tsup || tsup.length < 2) return null;
     const n = tsup.length;
 
-    // RMSE
-    let sumSq = 0;
-    tsup.forEach(v => sumSq += (v - tref)**2);
-    const rmse = Math.sqrt(sumSq / n);
+    let sumSq=0, sumAbs=0;
+    tsup.forEach(v => { sumSq += (v-tref)**2; sumAbs += Math.abs(v-tref); });
+    const rmse = Math.sqrt(sumSq/n);
+    const mae  = sumAbs/n;
 
-    // MAE
-    let sumAbs = 0;
-    tsup.forEach(v => sumAbs += Math.abs(v - tref));
-    const mae = sumAbs / n;
-
-    // Overshoot: max exceedance beyond setpoint in cooling direction
-    // (if cooling: undershoot = going below tref)
     const cooling = tsup[0] > tref;
-    let overshoot = 0, undershoot = 0;
+    let overshoot=0, undershoot=0;
     tsup.forEach(v => {
       if(cooling){
-        const under = tref - v;  // positive = below setpoint
-        if(under > undershoot) undershoot = under;
-        const over  = v - tsup[tsup.length-1]; // above final
-        if(over  > overshoot)  overshoot  = over;
-      } else {
-        const over  = v - tref;
-        if(over  > overshoot)  overshoot  = over;
         const under = tref - v;
         if(under > undershoot) undershoot = under;
+      } else {
+        const over = v - tref;
+        if(over > overshoot) overshoot = over;
       }
     });
 
-    // Steady-state error: mean of last 10% of samples
-    const tail = tsup.slice(-Math.max(1, Math.floor(n*0.1)));
+    const tail   = tsup.slice(-Math.max(1, Math.floor(n*0.1)));
     const ssMean = tail.reduce((a,b)=>a+b,0)/tail.length;
     const ssError = Math.abs(ssMean - tref);
 
-    // Rise time: time from 10% to 90% of total change
     const T0   = tsup[0];
-    const Tfin = ssMean;
-    const span = Math.abs(Tfin - T0);
-    let t10 = null, t90 = null;
+    const span = Math.abs(ssMean - T0);
+    let t10=null, t90=null;
     for(let i=0;i<tsup.length;i++){
-      const prog = Math.abs(tsup[i] - T0) / (span||1);
-      if(t10===null && prog >= 0.10) t10 = times[i];
-      if(t90===null && prog >= 0.90) t90 = times[i];
+      const prog = Math.abs(tsup[i]-T0)/(span||1);
+      if(t10===null && prog>=0.10) t10=times[i];
+      if(t90===null && prog>=0.90) t90=times[i];
     }
-    const riseTime = (t10!==null && t90!==null) ? (t90 - t10) : null;
+    const riseTime = (t10!==null && t90!==null) ? (t90-t10) : null;
 
-    // Settling time: last time |error| > 2% of span
-    const band = 0.02 * (span||1);
-    let settlingTime = null;
+    const band = 0.02*(span||1);
+    let settlingTime=null;
     for(let i=tsup.length-1;i>=0;i--){
-      if(Math.abs(tsup[i]-Tfin) > band){ settlingTime = times[i]; break; }
+      if(Math.abs(tsup[i]-ssMean)>band){ settlingTime=times[i]; break; }
     }
 
     return { rmse, mae, overshoot, undershoot, ssError, riseTime, settlingTime };
   }
 
-  function captureAndSave(){
+  // ── CSV export ────────────────────────────────────────
+  function saveCSV(){
+    let csv='Time,Tamb,Tsup,Tdew,RH,Tref,PWM_Peltier,PWM_Fan,Kp,Ki,Kd,Lambda,Mu\n';
+    for(let i=0;i<histTime.length;i++){
+      csv+=[
+        histTime[i].toFixed(2),
+        gv('txtTamb'), histTsup[i].toFixed(4), histTdew[i].toFixed(4),
+        gv('txtRH'), Tref,
+        histPeltier[i].toFixed(2), histFan[i].toFixed(2),
+        gv('txtKp'),gv('txtKi'),gv('txtKd'),gv('txtLam'),gv('txtMu')
+      ].join(',')+'\n';
+    }
+    const blob = new Blob([csv],{type:'text/csv'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `FOPID_Tamb${gv('txtTamb')}_Tref${gv('txtTref')}_trial${String(ensayoNumero).padStart(3,'0')}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }
+
+  // ── PNG export ────────────────────────────────────────
+  function savePNG(){
     const p5canvas = document.querySelector('#canvas-container canvas');
-    if(!p5canvas){ return; }
+    if(!p5canvas) return;
 
-    const metrics = calcMetrics(histTsup, Tref, histTime);
-
-    const panelW = 340;
+    const m = trialMetrics;
+    const panelW = 300;
     const imgW   = p5canvas.width + panelW;
-    const imgH   = Math.max(p5canvas.height, 600);
+    const imgH   = p5canvas.height;
 
-    const offscreen = document.createElement('canvas');
-    offscreen.width  = imgW;
-    offscreen.height = imgH;
-    const ctx = offscreen.getContext('2d');
+    const off = document.createElement('canvas');
+    off.width=imgW; off.height=imgH;
+    const ctx = off.getContext('2d');
 
-    // Background
-    ctx.fillStyle = '#f0f2f8';
-    ctx.fillRect(0, 0, imgW, imgH);
+    ctx.fillStyle='#f5f5f5';
+    ctx.fillRect(0,0,imgW,imgH);
+    ctx.drawImage(p5canvas,0,0);
 
-    // p5 canvas
-    ctx.drawImage(p5canvas, 0, 0);
-
-    // Panel background
+    // Panel
     const px = p5canvas.width;
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(px, 0, panelW, imgH);
-    ctx.strokeStyle = '#b0b8cc';
-    ctx.lineWidth = 1;
+    ctx.fillStyle='#fff';
+    ctx.fillRect(px,0,panelW,imgH);
+    ctx.strokeStyle='#ccc'; ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(px,0); ctx.lineTo(px,imgH); ctx.stroke();
 
-    const col = px + 18;
-    let cy = 28;
+    const col=px+16;
+    let cy=28;
+    const mono = '"Courier New", monospace';
 
-    // Helper draw functions
-    function sectionTitle(text){
-      ctx.fillStyle = '#001a60';
-      ctx.font = 'bold 13px "Courier New", monospace';
-      ctx.fillText(text, col, cy);
-      cy += 6;
-      ctx.strokeStyle = '#99aacc';
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(col, cy); ctx.lineTo(px+panelW-18, cy); ctx.stroke();
-      cy += 14;
+    function secTitle(txt){
+      ctx.font=`bold 12px ${mono}`; ctx.fillStyle='#001a60';
+      ctx.fillText(txt,col,cy); cy+=5;
+      ctx.strokeStyle='#aac'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(col,cy); ctx.lineTo(px+panelW-16,cy); ctx.stroke();
+      cy+=13;
     }
-    function row(label, value, unit='', highlight=false){
-      ctx.font = '11px "Courier New", monospace';
-      ctx.fillStyle = highlight ? '#440088' : '#555';
-      ctx.fillText(label, col, cy);
-      ctx.font = highlight ? 'bold 11px "Courier New", monospace' : '11px "Courier New", monospace';
-      ctx.fillStyle = highlight ? '#440088' : '#111';
-      ctx.fillText(value + (unit ? ' '+unit : ''), col + 175, cy);
-      cy += 18;
+    function row(label,val){
+      ctx.font=`11px ${mono}`; ctx.fillStyle='#555'; ctx.fillText(label,col,cy);
+      ctx.fillStyle='#111'; ctx.fillText(val, col+160, cy);
+      cy+=17;
     }
-    function gap(n=8){ cy += n; }
+    function gap(){ cy+=8; }
 
-    // Title
-    ctx.fillStyle = '#001a60';
-    ctx.font = 'bold 15px "Courier New", monospace';
-    ctx.fillText('FOPID Trial Report', col, cy); cy += 22;
-    ctx.font = '10px "Courier New", monospace';
-    ctx.fillStyle = '#888';
-    const now = new Date();
-    ctx.fillText(now.toLocaleString(), col, cy); cy += 24;
+    ctx.font=`bold 14px ${mono}`; ctx.fillStyle='#001a60';
+    ctx.fillText('FOPID Trial Report',col,cy); cy+=18;
+    ctx.font=`10px ${mono}`; ctx.fillStyle='#999';
+    ctx.fillText(new Date().toLocaleString(),col,cy); cy+=22;
 
-    // Parameters section
-    sectionTitle('CONTROLLER PARAMETERS');
-    row('Setpoint Tref',     gv('txtTref'),    '°C', true);
-    row('Kp',                gv('txtKp'),      '');
-    row('Ki',                gv('txtKi'),      '');
-    row('Kd',                gv('txtKd'),      '');
-    row('λ (lambda)',         gv('txtLam'),     '');
-    row('μ (mu)',             gv('txtMu'),      '');
+    secTitle('CONTROLLER PARAMETERS');
+    row('Setpoint Tref', gv('txtTref')+' °C');
+    row('Kp',  gv('txtKp'));
+    row('Ki',  gv('txtKi'));
+    row('Kd',  gv('txtKd'));
+    row('λ (lambda)', gv('txtLam'));
+    row('μ (mu)',     gv('txtMu'));
     gap();
 
-    sectionTitle('TEST CONDITIONS');
-    row('Ambient Temp',      gv('txtTamb'),    '°C');
-    row('Rel. Humidity',     gv('txtRH'),      '%');
-    row('Duration',          gv('txtDuracion'),'s');
-    row('Trial nº',          String(ensayoNumero), '');
-    row('Samples',           String(histTsup.length), '');
+    secTitle('TEST CONDITIONS');
+    row('Ambient Temp',   gv('txtTamb')+' °C');
+    row('Rel. Humidity',  gv('txtRH')+'%');
+    row('Duration',       gv('txtDuracion')+' s');
+    row('Trial nº',       String(ensayoNumero));
+    row('Samples',        String(histTsup.length));
     gap();
 
-    sectionTitle('PERFORMANCE METRICS');
-    if(metrics){
-      row('RMSE',            metrics.rmse.toFixed(3),       '°C', true);
-      row('MAE',             metrics.mae.toFixed(3),        '°C', true);
-      row('Undershoot',      metrics.undershoot.toFixed(3), '°C');
-      row('Steady-state err',metrics.ssError.toFixed(3),    '°C', true);
-      row('Rise time (10→90%)', metrics.riseTime!==null ? metrics.riseTime.toFixed(1) : 'N/A', 's');
-      row('Settling time (2%)', metrics.settlingTime!==null ? metrics.settlingTime.toFixed(1) : 'N/A', 's');
-    } else {
-      ctx.font = '11px "Courier New", monospace';
-      ctx.fillStyle = '#999';
-      ctx.fillText('No data available', col, cy); cy+=18;
+    secTitle('PERFORMANCE METRICS');
+    if(m){
+      row('RMSE',       m.rmse.toFixed(3)+' °C');
+      row('MAE',        m.mae.toFixed(3)+' °C');
+      row('Undershoot', m.undershoot.toFixed(3)+' °C');
+      row('SS error',   m.ssError.toFixed(3)+' °C');
+      row('Rise time',  (m.riseTime!==null?m.riseTime.toFixed(1):'N/A')+' s');
+      row('Settling',   (m.settlingTime!==null?m.settlingTime.toFixed(1):'N/A')+' s');
     }
 
-    const dataURL = offscreen.toDataURL('image/png');
+    const dataURL = off.toDataURL('image/png');
     const a = document.createElement('a');
     a.href = dataURL;
     a.download = `FOPID_Tamb${gv('txtTamb')}_Tref${gv('txtTref')}_trial${String(ensayoNumero).padStart(3,'0')}.png`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
 
-  
-
-
-  // ── Contextual footer hints ──────────────────────────
+  // ── Contextual footer hints ───────────────────────────
   const HINTS = {
-    txtTref: {
-      title: 'Setpoint (Tref)',
-      body:  'Target temperature the controller will track. Lowering it forces the Peltier to cool more aggressively.'
-    },
-    txtKp: {
-      title: 'Kp — Proportional gain',
-      body:  'Higher Kp → faster response but more overshoot and risk of oscillation. Lower Kp → slower, more stable approach.'
-    },
-    txtKi: {
-      title: 'Ki — Integral gain',
-      body:  'Higher Ki → eliminates steady-state error faster, but too high causes sustained oscillation or windup.'
-    },
-    txtKd: {
-      title: 'Kd — Derivative gain',
-      body:  'Higher Kd → dampens overshoot and oscillations. Excessive Kd amplifies noise and can destabilise the loop.'
-    },
-    txtLam: {
-      title: 'λ (lambda) — Fractional integrator order',
-      body:  'Values < 1 give the integrator long memory of past errors, improving disturbance rejection. Values > 1 approach a double integrator.'
-    },
-    txtMu: {
-      title: 'μ (mu) — Fractional derivative order',
-      body:  'Values > 1 give a smoother derivative action than classic PD. Values < 1 make it more reactive to fast changes.'
-    },
-    txtDuracion: {
-      title: 'Trial duration',
-      body:  'Total recording time in seconds. The trial stops automatically and exports a PNG report when this time elapses.'
-    },
-    txtTamb: {
-      title: 'Ambient temperature',
-      body:  'Sets the thermal load baseline for the simulator. Higher ambient temp means the Peltier works harder to cool.'
-    },
-    txtRH: {
-      title: 'Relative humidity',
-      body:  'High RH raises the dew point, increasing condensation risk on the cold surface. Monitor Tdew vs Tsup.'
-    }
+    txtTref:     { title:'Setpoint (Tref)',                  body:'Target temperature the controller will track. Lowering it forces the Peltier to cool more aggressively.' },
+    txtKp:       { title:'Kp — Proportional gain',           body:'Higher Kp → faster response but more overshoot and risk of oscillation. Lower Kp → slower, more stable approach.' },
+    txtKi:       { title:'Ki — Integral gain',               body:'Higher Ki → eliminates steady-state error faster, but too high causes sustained oscillation or windup.' },
+    txtKd:       { title:'Kd — Derivative gain',             body:'Higher Kd → dampens overshoot and oscillations. Excessive Kd amplifies noise and can destabilise the loop.' },
+    txtLam:      { title:'λ (lambda) — Fractional integrator order', body:'Values < 1 give the integrator long memory of past errors, improving disturbance rejection.' },
+    txtMu:       { title:'μ (mu) — Fractional derivative order',     body:'Values > 1 give a smoother derivative action than classic PD. Values < 1 make it more reactive to fast changes.' },
+    txtDuracion: { title:'Trial duration',                   body:'Total recording time in seconds. The trial stops automatically when this time elapses.' },
+    txtTamb:     { title:'Ambient temperature',              body:'Sets the thermal load baseline. Higher ambient temp means the Peltier works harder to cool.' },
+    txtRH:       { title:'Relative humidity',                body:'High RH raises the dew point, increasing condensation risk on the cold surface. Monitor Tdew vs Tsup.' }
   };
 
   const footerInfo    = document.getElementById('footer-info');
@@ -750,8 +704,6 @@ document.addEventListener("DOMContentLoaded", function () {
       footerInfo.classList.remove('active');
     });
   });
-
-
 
 }); // DOMContentLoaded
 </script>
