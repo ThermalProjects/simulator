@@ -57,6 +57,7 @@
     #btnStart       { background: #87ceeb; color: #003050; }
     #btnStart.active{ background: #b43232; color: #fff; }
     #btnMode        { background: #6495ed; color: #fff; }
+    #btnReport      { background: #5a9a6e; color: #fff; display: none; }
 
     #status-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
     #status-dot {
@@ -84,15 +85,15 @@
       bottom: 0;
       right: 0;
       height: 60px;
-      background: rgba(240,240,255,0.97);
-      border-top: 2px solid #99b;
+      background: #f5f5f5;
+      border-top: none;
       display: flex;
       align-items: center;
       padding: 0 28px;
       z-index: 10;
       transition: background 0.25s;
     }
-    #footer-info.active { background: rgba(220,232,255,0.99); }
+    #footer-info.active { background: #f5f5f5; }
     #footer-default {
       font-family: 'Courier New', monospace;
       font-size: 11px;
@@ -162,6 +163,7 @@
 
   <button class="btn" id="btnStart">Start trial</button>
   <button class="btn" id="btnMode">Mode: Setpoint</button>
+  <button class="btn" id="btnReport">Download report</button>
 </div>
 
 <div id="canvas-container"></div>
@@ -243,7 +245,7 @@ document.addEventListener("DOMContentLoaded", function () {
   let Tsup=20, Tdew=0, Tref=25;
   let nextTamb=20, nextTsup=20, nextRH=70, nextTdew=0;
   let pwmFan=0;
-  let isLogging=false, startTime=0;
+  let isLogging=false, startTime=0, reportReady=false;
   let ensayoNumero=0, ensayoDuracion=300;
   let showTdew=false, justFinished=false;
   let histTsup=[], histTdew=[], histPeltier=[], histFan=[], histTime=[];
@@ -273,6 +275,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const mu       = gf('txtMu',1.47);
 
       isLogging=true; startTime=Date.now(); ensayoNumero++;
+      reportReady=false; document.getElementById('btnReport').style.display='none';
       histTsup=[]; histTdew=[]; histPeltier=[]; histFan=[]; histTime=[];
       prevTsup=nextTsup=Tambv;
       prevTdew=nextTdew=0;
@@ -373,8 +376,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
       if(justFinished){
         justFinished=false;
-        // Capture snapshot BEFORE downloading so canvas is still populated
-        captureAndSave(s);
+        reportReady=true;
+        document.getElementById('btnReport').style.display='';
       }
     };
 
@@ -541,7 +544,7 @@ document.addEventListener("DOMContentLoaded", function () {
     return { rmse, mae, overshoot, undershoot, ssError, riseTime, settlingTime };
   }
 
-  function captureAndSave(s){
+  function captureAndSave(){
     const p5canvas = document.querySelector('#canvas-container canvas');
     if(!p5canvas){ return; }
 
@@ -647,6 +650,77 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   
+
+
+  // ── Contextual footer hints ──────────────────────────
+  const HINTS = {
+    txtTref: {
+      title: 'Setpoint (Tref)',
+      body:  'Target temperature the controller will track. Lowering it forces the Peltier to cool more aggressively.'
+    },
+    txtKp: {
+      title: 'Kp — Proportional gain',
+      body:  'Higher Kp → faster response but more overshoot and risk of oscillation. Lower Kp → slower, more stable approach.'
+    },
+    txtKi: {
+      title: 'Ki — Integral gain',
+      body:  'Higher Ki → eliminates steady-state error faster, but too high causes sustained oscillation or windup.'
+    },
+    txtKd: {
+      title: 'Kd — Derivative gain',
+      body:  'Higher Kd → dampens overshoot and oscillations. Excessive Kd amplifies noise and can destabilise the loop.'
+    },
+    txtLam: {
+      title: 'λ (lambda) — Fractional integrator order',
+      body:  'Values < 1 give the integrator long memory of past errors, improving disturbance rejection. Values > 1 approach a double integrator.'
+    },
+    txtMu: {
+      title: 'μ (mu) — Fractional derivative order',
+      body:  'Values > 1 give a smoother derivative action than classic PD. Values < 1 make it more reactive to fast changes.'
+    },
+    txtDuracion: {
+      title: 'Trial duration',
+      body:  'Total recording time in seconds. The trial stops automatically and exports a PNG report when this time elapses.'
+    },
+    txtTamb: {
+      title: 'Ambient temperature',
+      body:  'Sets the thermal load baseline for the simulator. Higher ambient temp means the Peltier works harder to cool.'
+    },
+    txtRH: {
+      title: 'Relative humidity',
+      body:  'High RH raises the dew point, increasing condensation risk on the cold surface. Monitor Tdew vs Tsup.'
+    }
+  };
+
+  const footerInfo    = document.getElementById('footer-info');
+  const footerDefault = document.getElementById('footer-default');
+  const footerHint    = document.getElementById('footer-hint');
+  const hintTitle     = document.getElementById('hint-title');
+  const hintBody      = document.getElementById('hint-body');
+
+  Object.keys(HINTS).forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('focus', () => {
+      const h = HINTS[id];
+      hintTitle.textContent = h.title;
+      hintBody.textContent  = h.body;
+      footerDefault.style.display = 'none';
+      footerHint.style.display    = 'flex';
+      footerInfo.classList.add('active');
+    });
+    el.addEventListener('blur', () => {
+      footerDefault.style.display = '';
+      footerHint.style.display    = 'none';
+      footerInfo.classList.remove('active');
+    });
+  });
+
+
+  // ── Download report button ───────────────────────────
+  document.getElementById('btnReport').addEventListener('click', () => {
+    if(reportReady) captureAndSave();
+  });
 
 }); // DOMContentLoaded
 </script>
