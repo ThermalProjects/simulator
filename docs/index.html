@@ -352,12 +352,20 @@ document.addEventListener("DOMContentLoaded", function () {
       s.text('Peltier cell thermal control  ·  FOPID controller', _gx, 36);
 
       // Info readouts (no parameters shown here)
-      const infoY=56;
-      s.textSize(13); s.fill(C.text()); s.textAlign(s.LEFT,s.TOP);
-      s.text(`Cold side temperature:      ${s.nf(Tsup,1,2)} °C`,     _gx, infoY);
-      s.text(`Ambient temperature: ${gv('txtTamb')} °C`,       _gx, infoY+18);
-      s.text(`Dew point temperature:      ${s.nf(Tdew,1,2)} °C`,     _gx, infoY+36);
-      s.text(`PWM Peltier:         ${s.nf(pwmPeltier,1,0)}`,   _gx, infoY+54);
+const infoY = 56;
+const vx = _gx + 195; // columna de valores
+s.textSize(13); s.fill(C.text()); s.textAlign(s.LEFT, s.TOP);
+
+s.text('Cold side temperature:',  _gx, infoY);
+s.text('Ambient temperature:',    _gx, infoY+18);
+s.text('Dew point temperature:',  _gx, infoY+36);
+s.text('PWM Peltier:',            _gx, infoY+54);
+
+s.textAlign(s.LEFT, s.TOP);
+s.text(`${s.nf(Tsup,1,2)} °C`,        vx, infoY);
+s.text(`${gv('txtTamb')} °C`,          vx, infoY+18);
+s.text(`${s.nf(Tdew,1,2)} °C`,        vx, infoY+36);
+s.text(`${s.nf(pwmPeltier,1,0)}`,      vx, infoY+54);
 
       // Metrics column — top-right corner, aligned with graph right edge
       if(trialMetrics && !isLogging){
