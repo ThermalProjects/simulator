@@ -290,6 +290,8 @@ document.addEventListener("DOMContentLoaded", function () {
       isLogging=false;
       sendMsg('STOP\n');
       justFinished=true;
+      reportReady=true;
+      document.getElementById('btnReport').style.display='';
       g('btnStart').textContent='Start trial';
       g('btnStart').classList.remove('active');
       setStatus('connected','Connected');
@@ -365,6 +367,8 @@ document.addEventListener("DOMContentLoaded", function () {
         s.text(`Time: ${elapsed} s / ${ensayoDuracion} s`,        _gx, infoY+90);
         if(elapsed>=ensayoDuracion){
           isLogging=false; justFinished=true;
+          reportReady=true;
+          document.getElementById('btnReport').style.display='';
           g('btnStart').textContent='Start trial';
           g('btnStart').classList.remove('active');
           sendMsg('STOP\n');
