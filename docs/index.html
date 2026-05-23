@@ -135,7 +135,7 @@
   </div>
 
   <label>Setpoint Temp (°C)</label>
-  <input id="txtTref" type="text" value="25.0"/>
+  <input id="txtTref" type="text" value="15.0"/>
 
   <label>Kp</label>
   <input id="txtKp" type="text" value="58.93"/>
@@ -246,6 +246,7 @@ document.addEventListener("DOMContentLoaded", function () {
   let nextTamb=20, nextTsup=20, nextRH=70, nextTdew=0;
   let pwmFan=0;
   let isLogging=false, startTime=0, reportReady=false;
+  let trialMetrics=null;
   let ensayoNumero=0, ensayoDuracion=300;
   let showTdew=false, justFinished=false;
   let histTsup=[], histTdew=[], histPeltier=[], histFan=[], histTime=[];
@@ -275,7 +276,7 @@ document.addEventListener("DOMContentLoaded", function () {
       const mu       = gf('txtMu',1.47);
 
       isLogging=true; startTime=Date.now(); ensayoNumero++;
-      reportReady=false; document.getElementById('btnReport').style.display='none';
+      reportReady=false; trialMetrics=null; document.getElementById('btnReport').style.display='none';
       histTsup=[]; histTdew=[]; histPeltier=[]; histFan=[]; histTime=[];
       prevTsup=nextTsup=Tambv;
       prevTdew=nextTdew=0;
@@ -291,6 +292,7 @@ document.addEventListener("DOMContentLoaded", function () {
       sendMsg('STOP\n');
       justFinished=true;
       reportReady=true;
+      trialMetrics=calcMetrics(histTsup, Tref, histTime);
       document.getElementById('btnReport').style.display='';
       g('btnStart').textContent='Start trial';
       g('btnStart').classList.remove('active');
@@ -350,14 +352,31 @@ document.addEventListener("DOMContentLoaded", function () {
       // Title
       s.textSize(22); s.fill(C.title()); s.textAlign(s.LEFT,s.TOP); s.noStroke();
       s.text('Fractional PID Thermal System Simulator', _gx, 10);
+      s.textSize(11); s.fill(s.color(100,100,130));
+      s.text('Peltier cell thermal control  ·  FOPID controller', _gx, 36);
 
       // Info readouts (no parameters shown here)
-      const infoY=50;
+      const infoY=56;
       s.textSize(13); s.fill(C.text()); s.textAlign(s.LEFT,s.TOP);
-      s.text(`Cell temperature:    ${s.nf(Tsup,1,2)} °C`,     _gx, infoY);
+      s.text(`Cold face temp:      ${s.nf(Tsup,1,2)} °C`,     _gx, infoY);
       s.text(`Ambient temperature: ${gv('txtTamb')} °C`,       _gx, infoY+18);
       s.text(`Dew point temp:      ${s.nf(Tdew,1,2)} °C`,     _gx, infoY+36);
       s.text(`PWM Peltier:         ${s.nf(pwmPeltier,1,0)}`,   _gx, infoY+54);
+
+      // Metrics column (shown after trial ends)
+      if(trialMetrics && !isLogging){
+        const mx = _gx + 280;
+        s.textSize(11); s.fill(s.color(0,60,120)); s.textAlign(s.LEFT,s.TOP);
+        s.text('── TRIAL METRICS ──', mx, infoY);
+        s.textSize(12); s.fill(C.text());
+        s.text(`RMSE:          ${trialMetrics.rmse.toFixed(3)} °C`,           mx, infoY+16);
+        s.text(`MAE:           ${trialMetrics.mae.toFixed(3)} °C`,            mx, infoY+32);
+        s.text(`Overshoot:     ${trialMetrics.overshoot.toFixed(3)} °C`,      mx, infoY+48);
+        s.text(`Undershoot:    ${trialMetrics.undershoot.toFixed(3)} °C`,     mx, infoY+64);
+        s.text(`SS error:      ${trialMetrics.ssError.toFixed(3)} °C`,        mx, infoY+80);
+        s.text(`Rise time:     ${trialMetrics.riseTime!==null?trialMetrics.riseTime.toFixed(1):'N/A'} s`,     mx, infoY+96);
+        s.text(`Settling time: ${trialMetrics.settlingTime!==null?trialMetrics.settlingTime.toFixed(1):'N/A'} s`, mx, infoY+112);
+      }
 
       // Trial timer
       if(isLogging){
@@ -368,6 +387,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if(elapsed>=ensayoDuracion){
           isLogging=false; justFinished=true;
           reportReady=true;
+          trialMetrics=calcMetrics(histTsup, Tref, histTime);
           document.getElementById('btnReport').style.display='';
           g('btnStart').textContent='Start trial';
           g('btnStart').classList.remove('active');
@@ -458,7 +478,7 @@ document.addEventListener("DOMContentLoaded", function () {
     s.textAlign(s.CENTER,s.TOP);
     s.text('Time [s]', gx+gw/2, gy+gh+30);
     s.push(); s.translate(gx-42,gy+gh/2); s.rotate(-Math.PI/2);
-    s.textAlign(s.CENTER,s.CENTER); s.text('Cell temperature [°C]',0,0); s.pop();
+    s.textAlign(s.CENTER,s.CENTER); s.text('Peltier cold face temperature [°C]',0,0); s.pop();
 
     // Tref line
     if(!showTdew){
