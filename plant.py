@@ -7,7 +7,7 @@ class ThreeNodePlant:
         # THERMAL RESISTANCES  [K/W]
         # Identified experimentally from real plant data
         # --------------------------------------------------
-        self.R_cold_amb = 9.0000  # Rconv — convective resistance to ambient
+        self.R_cold_amb = 18  # Rconv — convective resistance to ambient
         self.R_cold_mid = 4.022803  # R1    — cold face ↔ mid node
         self.R_mid_hot  = 6.003481  # R2    — mid node ↔ hot face
 
