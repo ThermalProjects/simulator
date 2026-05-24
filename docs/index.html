@@ -53,7 +53,7 @@
       font-size: clamp(13px, 1.9vh, 18px);
       font-family: 'Courier New', monospace;
       border: none; border-radius: 3px; cursor: pointer;
-      margin-top: clamp(12px, 1.8vh, 20px);
+      margin-top: clamp(6px, 1.0vh, 12px);
       font-weight: bold;
       flex-shrink: 0;
       transition: filter 0.15s, background 0.3s, color 0.3s;
@@ -127,7 +127,7 @@
   <label>Relative humidity (%)</label>
   <input id="txtRH"       type="text" value="70.0"/>
 
-  <button class="btn" id="btnStart">Start trial</button>
+  <button class="btn" id="btnStart" style="margin-top: clamp(14px, 2.2vh, 26px);">Start trial</button>
   <button class="btn" id="btnMode">Mode: Setpoint</button>
   <button class="btn" id="btnFan">Fan: OFF</button>
   <button class="btn" id="btnSave" disabled>Save report</button>
@@ -334,9 +334,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
       // ── Title
       s.textSize(22); s.fill(C.title()); s.textAlign(s.LEFT,s.TOP); s.noStroke();
-      s.text('Fractional Order PID Thermal System Simulator', _gx, 10);
+      s.text('Fractional PID Thermal System Simulator', _gx, 10);
       s.textSize(11); s.fill(s.color(100,100,130));
-      s.text('Peltier cell thermal control', _gx, 36);
+      s.text('Peltier cell thermal control  ·  FOPID controller', _gx, 36);
 
       // ── Readouts: two columns
       const infoY  = 56;
@@ -362,7 +362,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       s.fill(s.color(80,80,80)); s.textAlign(s.LEFT,s.TOP);
       s.text('PWM Peltier:',  col2X, infoY);
-      s.text('PWM Fan:',          col2X, infoY + rowH);
+      s.text('Fan:',          col2X, infoY + rowH);
       s.text('Trial nº:',     col2X, infoY + rowH*2);
       s.text('Time:',         col2X, infoY + rowH*3);
 
@@ -401,8 +401,8 @@ document.addEventListener("DOMContentLoaded", function () {
       if(trialMetrics && !isLogging){
         const mLines = [
           ['── TRIAL METRICS ──', null],
-          ['RMSE',        trialMetrics.rmse.toFixed(3)       + ' °C'],
-          ['MAE',         trialMetrics.mae.toFixed(3)        + ' °C'],
+          ['RMSE SS',    (trialMetrics.rmse!==null ? trialMetrics.rmse.toFixed(3) : 'N/A') + (trialMetrics.rmse!==null ? ' °C' : '')],
+          ['MAE SS',     (trialMetrics.mae!==null  ? trialMetrics.mae.toFixed(3)  : 'N/A') + (trialMetrics.mae!==null  ? ' °C' : '')],
           ['Undershoot',  trialMetrics.undershoot.toFixed(3) + ' °C'],
           ['SS error',    trialMetrics.ssError.toFixed(3)    + ' °C'],
           ['Rise time',   (trialMetrics.riseTime!==null ? trialMetrics.riseTime.toFixed(1) : 'N/A') + ' s'],
@@ -488,7 +488,7 @@ document.addEventListener("DOMContentLoaded", function () {
     s.text('Time [s]', gx+gw/2, gy+gh+30);
     s.push(); s.translate(gx-42,gy+gh/2); s.rotate(-Math.PI/2);
     s.textAlign(s.CENTER,s.CENTER);
-    s.text('Temperature [°C]',0,0);
+    s.text('Peltier cold face temperature [°C]',0,0);
     s.pop();
 
     if(!showTdew){
@@ -521,11 +521,6 @@ document.addEventListener("DOMContentLoaded", function () {
     if(!tsup || tsup.length < 2) return null;
     const n = tsup.length;
 
-    let sumSq=0, sumAbs=0;
-    tsup.forEach(v => { sumSq+=(v-tref)**2; sumAbs+=Math.abs(v-tref); });
-    const rmse = Math.sqrt(sumSq/n);
-    const mae  = sumAbs/n;
-
     const cooling = tsup[0] > tref;
     let undershoot=0;
     tsup.forEach(v => {
@@ -551,6 +546,19 @@ document.addEventListener("DOMContentLoaded", function () {
     let settlingTime=null;
     for(let i=tsup.length-1;i>=0;i--){
       if(Math.abs(tsup[i]-ssMean)>band){ settlingTime=times[i]; break; }
+    }
+
+    // RMSE SS and MAE SS: only from settlingTime to end
+    let rmse=null, mae=null;
+    if(settlingTime !== null){
+      const ssIdx = times.findIndex(t => t >= settlingTime);
+      const ssSamples = tsup.slice(ssIdx);
+      if(ssSamples.length > 0){
+        let sumSq=0, sumAbs=0;
+        ssSamples.forEach(v => { sumSq+=(v-tref)**2; sumAbs+=Math.abs(v-tref); });
+        rmse = Math.sqrt(sumSq/ssSamples.length);
+        mae  = sumAbs/ssSamples.length;
+      }
     }
 
     return { rmse, mae, undershoot, ssError, riseTime, settlingTime, energyJ: eJ };
@@ -580,7 +588,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const p5canvas=document.querySelector('#canvas-container canvas');
     if(!p5canvas) return;
     const m=trialMetrics;
-    const panelW=360, imgW=p5canvas.width+panelW, imgH=p5canvas.height;
+    const panelW=440, imgW=p5canvas.width+panelW, imgH=p5canvas.height;
     const off=document.createElement('canvas');
     off.width=imgW; off.height=imgH;
     const ctx=off.getContext('2d');
@@ -605,7 +613,7 @@ document.addEventListener("DOMContentLoaded", function () {
       ctx.font=`12px ${mono}`; ctx.fillStyle='#555';
       ctx.fillText(l,col,cy);
       ctx.fillStyle='#111';
-      ctx.fillText(v, col+185, cy);
+      ctx.fillText(v, col+220, cy);
       cy+=19;
     }
     function gap(){ cy+=10; }
@@ -632,8 +640,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
     sec('PERFORMANCE METRICS');
     if(m){
-      row('RMSE',       m.rmse.toFixed(3)+' °C');
-      row('MAE',        m.mae.toFixed(3)+' °C');
+      row('RMSE SS',    m.rmse!==null ? m.rmse.toFixed(3)+' °C' : 'N/A');
+      row('MAE SS',     m.mae!==null  ? m.mae.toFixed(3)+' °C'  : 'N/A');
       row('Undershoot', m.undershoot.toFixed(3)+' °C');
       row('SS error',   m.ssError.toFixed(3)+' °C');
       row('Rise time',  (m.riseTime!==null?m.riseTime.toFixed(1):'N/A')+' s');
