@@ -17,10 +17,15 @@ dt   = 0.2
 plant = make_plant(dt=dt)
 
 # ── FOPID MEMORY ──────────────────────────────────────────
-M = 40
+M = 30          # matches Arduino M=30
+I_MAX = 80.0    # matches Arduino I_MAX=80
 e_hist = [0.0] * (M + 1)
 wI     = [0.0] * (M + 1)
 wD     = [0.0] * (M + 1)
+
+# ── ARDUINO CONSTANTS ─────────────────────────────────────
+THERMAL_BIAS = 1.0   # Arduino subtracts this from Tref before controlling
+TDEW_OFFSET  = 1.5   # Arduino subtracts this from Tdew in dew point mode
 
 def init_gl(lambda_, mu):
     wI[0] = wD[0] = 1.0
@@ -48,7 +53,8 @@ state = dict(
     RH        = 70.0,
     Tsup      = 20.0,
     Tdew_const= 0.0,
-    fan_on    = False,    # default OFF — must match client default
+    fan_on    = False,
+    show_tdew = False,
 )
 
 MAX_PWM = 255
@@ -60,8 +66,9 @@ async def handler(websocket):
     print(f"[WS] Client connected: {websocket.remote_address}")
 
     plant.reset(T_init=state['Tamb'])
-    state['running'] = False
-    state['fan_on']  = False   # reset to OFF on each new connection
+    state['running']   = False
+    state['fan_on']    = False
+    state['show_tdew'] = False
     e_hist = [0.0] * (M + 1)
     init_gl(state['lambda_'], state['mu'])
 
@@ -99,7 +106,6 @@ async def handler(websocket):
                     if len(parts) > 6:  state['mu']      = float(parts[6])
                     if len(parts) > 8:  state['Tamb']    = float(parts[8])
                     if len(parts) > 9:  state['RH']      = float(parts[9])
-                    # parts[10] carries fan state from client (1=ON, 0=OFF)
                     if len(parts) > 10:
                         state['fan_on'] = (parts[10].strip() == '1')
 
@@ -119,15 +125,21 @@ async def handler(websocket):
                     state['fan_on'] = False
 
                 elif cmd == "MODE_TDEW_ON":
-                    pass  # handled client-side
+                    state['show_tdew'] = True
 
                 elif cmd == "MODE_TDEW_OFF":
-                    pass
+                    state['show_tdew'] = False
 
             # ── CONTROL LOOP ───────────────────────────
             if state['running']:
 
-                error = state['Tsup'] - state['Tref']
+                # Target matches Arduino: Tref - THERMAL_BIAS (or Tdew - TDEW_OFFSET)
+                if state['show_tdew']:
+                    target = state['Tdew_const'] - TDEW_OFFSET
+                else:
+                    target = state['Tref'] - THERMAL_BIAS
+
+                error = state['Tsup'] - target
 
                 for i in range(M, 0, -1):
                     e_hist[i] = e_hist[i-1]
@@ -136,10 +148,14 @@ async def handler(websocket):
                 sumI = sum(wI[k] * e_hist[k] for k in range(M + 1))
                 sumD = sum(wD[k] * e_hist[k] for k in range(M + 1))
 
+                # Match Arduino: clamp integral, regularize derivative
+                sumI_clamped = max(-I_MAX, min(I_MAX, sumI))
+                sumD_reg     = sumD / (1.0 + abs(sumD))
+
                 u = (
                     state['Kp'] * error
-                    + state['Ki'] * (dt ** state['lambda_']) * sumI
-                    + state['Kd'] * (sumD / (dt ** state['mu']))
+                    + state['Ki'] * (dt ** state['lambda_']) * sumI_clamped
+                    + state['Kd'] * (sumD_reg / (dt ** state['mu']))
                 )
 
                 pwm = int(max(0, min(MAX_PWM, u)))
@@ -147,7 +163,6 @@ async def handler(websocket):
                 Tc, _, Th = plant.step(pwm, state['Tamb'], fan_on=state['fan_on'])
                 state['Tsup'] = Tc
 
-                # pwm_fan in message: 255 if fan on, 0 if off
                 pwm_fan_out = 255 if state['fan_on'] else 0
 
                 msg = (
