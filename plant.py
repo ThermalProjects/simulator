@@ -14,7 +14,7 @@ class ThreeNodePlant:
         # Hot side to ambient — fan modulates this
         # Measured directly: fan ON/OFF steady-state experiments
         self.R_hot_fan_on  =  1.04   # K/W  (fan=255)
-        self.R_hot_fan_off = 13.89   # K/W  (fan=0)
+        self.R_hot_fan_off = 39.28   # K/W  (fan=0) — fitted from real SS fan OFF data
 
         # --------------------------------------------------
         # THERMAL CAPACITANCES  [J/K]
@@ -28,7 +28,7 @@ class ThreeNodePlant:
         # PELTIER SMOOTHING TIME CONSTANT  [s]
         # θ identified experimentally from real plant data
         # --------------------------------------------------
-        self.tau = 8.0     # empirically calibrated from real rise time
+        self.tau = 31.17   # calibrated from real rise time (~22s fan ON)
 
         # --------------------------------------------------
         # STATE
