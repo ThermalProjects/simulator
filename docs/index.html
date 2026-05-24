@@ -588,7 +588,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const p5canvas=document.querySelector('#canvas-container canvas');
     if(!p5canvas) return;
     const m=trialMetrics;
-    const panelW=440, imgW=p5canvas.width+panelW, imgH=p5canvas.height;
+    const panelW=Math.round(p5canvas.width*(2/3)), imgW=p5canvas.width+panelW, imgH=p5canvas.height;
     const off=document.createElement('canvas');
     off.width=imgW; off.height=imgH;
     const ctx=off.getContext('2d');
@@ -600,28 +600,28 @@ document.addEventListener("DOMContentLoaded", function () {
     ctx.beginPath(); ctx.moveTo(px,0); ctx.lineTo(px,imgH); ctx.stroke();
 
     const col=px+20, mono='"Courier New",monospace';
-    let cy=32;
+    let cy=48;
 
     function sec(t){
-      ctx.font=`bold 13px ${mono}`; ctx.fillStyle='#001a60';
-      ctx.fillText(t,col,cy); cy+=6;
+      ctx.font=`bold 26px ${mono}`; ctx.fillStyle='#001a60';
+      ctx.fillText(t,col,cy); cy+=12;
       ctx.strokeStyle='#aac'; ctx.lineWidth=1;
       ctx.beginPath(); ctx.moveTo(col,cy); ctx.lineTo(px+panelW-20,cy); ctx.stroke();
-      cy+=15;
+      cy+=30;
     }
     function row(l,v){
-      ctx.font=`12px ${mono}`; ctx.fillStyle='#555';
+      ctx.font=`24px ${mono}`; ctx.fillStyle='#555';
       ctx.fillText(l,col,cy);
       ctx.fillStyle='#111';
-      ctx.fillText(v, col+220, cy);
-      cy+=19;
+      ctx.fillText(v, col+380, cy);
+      cy+=38;
     }
-    function gap(){ cy+=10; }
+    function gap(){ cy+=20; }
 
-    ctx.font=`bold 16px ${mono}`; ctx.fillStyle='#001a60';
-    ctx.fillText('FOPID Trial Report',col,cy); cy+=20;
-    ctx.font=`11px ${mono}`; ctx.fillStyle='#999';
-    ctx.fillText(new Date().toLocaleString(),col,cy); cy+=26;
+    ctx.font=`bold 32px ${mono}`; ctx.fillStyle='#001a60';
+    ctx.fillText('FOPID Trial Report',col,cy); cy+=40;
+    ctx.font=`22px ${mono}`; ctx.fillStyle='#999';
+    ctx.fillText(new Date().toLocaleString(),col,cy); cy+=52;
 
     sec('CONTROLLER PARAMETERS');
     row('Setpoint Tref', gv('txtTref')+' °C');
