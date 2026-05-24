@@ -13,16 +13,17 @@
       overflow: hidden;
       background: #f5f5f5;
       font-family: 'Courier New', monospace;
+      position: relative;
     }
 
     /* ── Sidebar: fills 100vh, no scroll, calibrated for 1080px height ── */
     #sidebar {
-      position: fixed; top: 0; left: 0;
-      width: 270px; height: 100vh;
+      position: absolute; top: 0; left: 0;
+      width: 270px; height: 100%;
       background: rgba(245,245,245,0.97);
       padding: clamp(8px, 1.5vh, 18px) 16px;
       display: flex; flex-direction: column;
-      gap: clamp(2px, 0.5vh, 6px);
+      gap: clamp(3px, 0.75vh, 9px);
       overflow: hidden;
       z-index: 10;
     }
@@ -52,7 +53,7 @@
       font-size: clamp(11px, 1.3vh, 14px);
       font-family: 'Courier New', monospace;
       border: none; border-radius: 3px; cursor: pointer;
-      margin-top: clamp(8px, 1.2vh, 14px);
+      margin-top: clamp(12px, 1.8vh, 20px);
       font-weight: bold;
       flex-shrink: 0;
       transition: filter 0.15s, background 0.3s, color 0.3s;
@@ -84,12 +85,12 @@
 
     /* ── Canvas + footer ── */
     #canvas-container {
-      position: fixed; left: 270px; top: 0; right: 0; bottom: 60px;
+      position: absolute; left: 270px; top: 0; right: 0; bottom: 60px;
     }
     canvas { display: block; }
 
     #footer-info {
-      position: fixed; left: 270px; bottom: 0; right: 0; height: 60px;
+      position: absolute; left: 270px; bottom: 0; right: 0; height: 60px;
       background: #f5f5f5; display: flex; align-items: center;
       padding: 0 28px; z-index: 10;
     }
@@ -680,7 +681,8 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   // ── Viewport scaling ──────────────────────────────────
-  const BASE_W = 1440, BASE_H = 1080;
+  const BASE_W = Math.round(window.innerWidth);
+  const BASE_H = Math.round(window.innerHeight);
   function scaleApp(){
     const scaleX = window.innerWidth  / BASE_W;
     const scaleY = window.innerHeight / BASE_H;
