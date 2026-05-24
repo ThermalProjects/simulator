@@ -14,7 +14,7 @@ class ThreeNodePlant:
         # Hot side to ambient — fan modulates this
         # Measured directly: fan ON/OFF steady-state experiments
         self.R_hot_fan_on  =  1.04   # K/W  (fan=255)
-        self.R_hot_fan_off = 55   # K/W  (fan=0) — fitted from real SS fan OFF data
+        self.R_hot_fan_off = 39.28s   # K/W  (fan=0) — fitted from real SS fan OFF data
 
         # --------------------------------------------------
         # THERMAL CAPACITANCES  [J/K]
