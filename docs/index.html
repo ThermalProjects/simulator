@@ -588,7 +588,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const p5canvas=document.querySelector('#canvas-container canvas');
     if(!p5canvas) return;
     const m=trialMetrics;
-    const panelW=Math.round(p5canvas.width*(2/3)), imgW=p5canvas.width+panelW, imgH=p5canvas.height;
+    const panelW=Math.round(p5canvas.width*(1/3)), imgW=p5canvas.width+panelW, imgH=p5canvas.height;
     const off=document.createElement('canvas');
     off.width=imgW; off.height=imgH;
     const ctx=off.getContext('2d');
