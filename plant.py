@@ -14,7 +14,7 @@ class ThreeNodePlant:
         # Hot side to ambient — fan modulates this
         # Measured directly: fan ON/OFF steady-state experiments
         self.R_hot_fan_on  =  1.04   # K/W  (fan=255)
-        self.R_hot_fan_off = 39.28s   # K/W  (fan=0) — fitted from real SS fan OFF data
+        self.R_hot_fan_off = 39.28   # K/W  (fan=0) 
 
         # --------------------------------------------------
         # THERMAL CAPACITANCES  [J/K]
@@ -28,7 +28,17 @@ class ThreeNodePlant:
         # PELTIER SMOOTHING TIME CONSTANT  [s]
         # θ identified experimentally from real plant data
         # --------------------------------------------------
-        self.tau = 31.17   # calibrated from real rise time (~22s fan ON)
+        self.tau = 31.17   # calibrated from real rise time 
+
+        # --------------------------------------------------
+        # PELTIER EFFICIENCY FACTOR  [-]
+        # Accounts for parasitic heat paths not captured by
+        # the 3-node model (mounting conduction, wiring losses).
+        # Fitted so that closed-loop PWM_ss matches real plant:
+        #   sim PWM_ss = 49  →  real PWM_ss = 64  (fan ON, Tref=12°C)
+        #   η = P_sim / P_real = 3.54 / 4.54 = 0.78
+        # --------------------------------------------------
+        self.eta = 0.78
 
         # --------------------------------------------------
         # STATE
@@ -36,7 +46,7 @@ class ThreeNodePlant:
         self.Tc    = 20.0
         self.Tm    = 20.0
         self.Th    = 20.0
-        self.P_eff = 0.0   # smoothed peltier power [W]
+        self.P_eff = 0.0 
 
     # ------------------------------------------------------
     def reset(self, T_init=20.0):
@@ -52,10 +62,11 @@ class ThreeNodePlant:
     #                    V  = 12 V constant
     #   Quadratic fit:  P = a*pwm² + b*pwm + c
     #   Coeffs: a=-1.087e-4  b=7.899e-2  c=-5.815e-2
+    #   Scaled by eta to account for parasitic losses.
     # ------------------------------------------------------
     def peltier_power(self, pwm):
         p = -1.0867e-4 * pwm**2 + 7.8994e-2 * pwm - 5.815e-2
-        return max(0.0, p)   # [W], physically bounded
+        return max(0.0, p * self.eta)   # [W], physically bounded
 
     # ------------------------------------------------------
     # EFFECTIVE R_hot depending on fan state
@@ -76,10 +87,10 @@ class ThreeNodePlant:
         R_hot = self.r_hot(fan_on)
 
         # Heat flows  [W]
-        q_amb_cold = (Tamb - self.Tc) / self.R_cold_amb   # ambient → cold face
+        q_amb_cold = (Tamb - self.Tc) / self.R_cold_amb  
         q_cold_mid = (self.Tc - self.Tm) / self.R_cold_mid
         q_mid_hot  = (self.Tm - self.Th) / self.R_mid_hot
-        q_hot_amb  = (self.Th - Tamb)    / R_hot           # heatsink → ambient
+        q_hot_amb  = (self.Th - Tamb)    / R_hot           
 
         # Energy balance on each node
         # Cold face: gains from ambient, loses to mid, loses pumped heat P
