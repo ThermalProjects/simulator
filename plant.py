@@ -28,8 +28,8 @@ class ThreeNodePlant:
     R_mid_hot  = 6.003481   # Rmh  — mid node  ↔ heatsink
 
     # Hot side → ambient: fan modulates this resistance
-    R_hot_fan_on  =  1.04      # K/W  fan=255  (measured directly)
-    R_hot_fan_off = 17.07925   # K/W  fan=0    (identified from dynamic fan-OFF experiment)
+    R_hot_fan_on  =  2.74   # K/W — identificado desde SS real fan-on
+    R_hot_fan_off =  9.57   # K/W — identificado desde SS real fan-off
 
     # ------------------------------------------------------------------
     # THERMAL CAPACITANCES  [J/K]  — identified from real plant data
@@ -65,8 +65,8 @@ class ThreeNodePlant:
             Measured: PWM=[0,50,150,200,255], I=[0,0.29,0.80,0.93,1.09] A
             V = 12 V constant  →  quadratic fit on P = V·I
         """
-        p = -1.0867e-4 * pwm**2 + 7.8994e-2 * pwm - 5.815e-2
-        return max(0.0, p)
+    p = -1.0867e-4 * pwm**2 + 7.8994e-2 * pwm - 5.815e-2
+    return max(0.0, p) * 0.781   # ← factor de eficiencia real
 
     # ------------------------------------------------------------------
     def r_hot(self, fan_on: bool) -> float:
