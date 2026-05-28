@@ -65,9 +65,10 @@ class ThreeNodePlant:
             Measured: PWM=[0,50,150,200,255], I=[0,0.29,0.80,0.93,1.09] A
             V = 12 V constant  →  quadratic fit on P = V·I
         """
-    p = -1.0867e-4 * pwm**2 + 7.8994e-2 * pwm - 5.815e-2
-    return max(0.0, p) * 0.781   # ← factor de eficiencia real
-
+    @staticmethod
+    def peltier_power(pwm: float) -> float:
+        p = -1.0867e-4 * pwm**2 + 7.8994e-2 * pwm - 5.815e-2
+        return max(0.0, p) * 0.781
     # ------------------------------------------------------------------
     def r_hot(self, fan_on: bool) -> float:
         return self.R_hot_fan_on if fan_on else self.R_hot_fan_off
