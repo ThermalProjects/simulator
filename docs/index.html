@@ -63,8 +63,6 @@
     #btnStart         { background: #87ceeb; color: #003050; }
     #btnStart.active  { background: #b43232; color: #fff; }
     #btnMode          { background: #6495ed; color: #fff; }
-    #btnFan           { background: #aaa;    color: #eee; }
-    #btnFan.fanon     { background: #e8a020; color: #fff; }
     #btnSave          { background: #aaa;    color: #eee; cursor: not-allowed; }
     #btnSave.ready    { background: #4a9a5e; color: #fff; cursor: pointer; }
 
@@ -271,7 +269,6 @@ document.addEventListener("DOMContentLoaded", function () {
     sendMsg(showTdew ? 'MODE_TDEW_ON\n' : 'MODE_TDEW_OFF\n');
   });
 
-
   g('btnSave').addEventListener('click', () => {
     if(!trialMetrics) return;
     saveCSV();
@@ -335,39 +332,34 @@ document.addEventListener("DOMContentLoaded", function () {
 
       s.textSize(13); s.noStroke();
 
+      // Left column labels
       s.fill(s.color(80,80,80)); s.textAlign(s.LEFT,s.TOP);
       s.text('Cold face temp:',  lblCol1, infoY);
       s.text('Hot face temp:',   lblCol1, infoY + rowH);
       s.text('Ambient temp:',    lblCol1, infoY + rowH*2);
       s.text('Dew point:',       lblCol1, infoY + rowH*3);
 
+      // Left column values
       s.fill(C.text()); s.textAlign(s.LEFT,s.TOP);
       s.text(`${s.nf(Tsup,1,2)} °C`,   valCol1, infoY);
       s.text(`${s.nf(Th,1,2)} °C`,     valCol1, infoY + rowH);
       s.text(`${gv('txtTamb')} °C`,     valCol1, infoY + rowH*2);
       s.text(`${s.nf(Tdew,1,2)} °C`,   valCol1, infoY + rowH*3);
 
+      // Right column labels
       s.fill(s.color(80,80,80)); s.textAlign(s.LEFT,s.TOP);
       s.text('PWM Peltier:',  col2X, infoY);
-      s.text('Trial nº:',     col2X, infoY + rowH*2);
-      s.text('Time:',         col2X, infoY + rowH*3);
+      s.text('Trial nº:',     col2X, infoY + rowH);
+      s.text('Time:',         col2X, infoY + rowH*2);
 
+      // Right column values
       s.fill(C.text()); s.textAlign(s.LEFT,s.TOP);
       s.text(`${s.nf(pwmPeltier,1,0)}`, valCol2, infoY);
 
-      if(fanOn){
-        s.fill(s.color(200,120,0));
-        s.text('ON  (255 PWM)', valCol2, infoY + rowH);
-      } else {
-        s.fill(s.color(120,120,120));
-        s.text('OFF (0 PWM)', valCol2, infoY + rowH);
-      }
-      s.fill(C.text());
-
       if(isLogging){
         const elapsed = Math.floor((Date.now()-startTime)/1000);
-        s.text(`${ensayoNumero}`, valCol2, infoY + rowH*2);
-        s.text(`${elapsed} s / ${ensayoDuracion} s`, valCol2, infoY + rowH*3);
+        s.text(`${ensayoNumero}`, valCol2, infoY + rowH);
+        s.text(`${elapsed} s / ${ensayoDuracion} s`, valCol2, infoY + rowH*2);
         if(elapsed >= ensayoDuracion){
           isLogging=false; justFinished=true;
           trialMetrics=calcMetrics(histTsup, Tref, histTime, energyJ);
@@ -379,8 +371,8 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       } else {
         s.fill(s.color(150,150,150));
-        s.text(ensayoNumero > 0 ? `${ensayoNumero}` : '—', valCol2, infoY + rowH*2);
-        s.text('—', valCol2, infoY + rowH*3);
+        s.text(ensayoNumero > 0 ? `${ensayoNumero}` : '—', valCol2, infoY + rowH);
+        s.text('—', valCol2, infoY + rowH*2);
         s.fill(C.text());
       }
 
@@ -552,20 +544,19 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // ── CSV export ─────────────────────────────────────────
   function saveCSV(){
-    let csv='Time,Tamb,Tsup,Tdew,RH,Tref,PWM_Peltier,PWM_Fan,Kp,Ki,Kd,Lambda,Mu,Fan\n';
+    let csv='Time,Tamb,Tsup,Tdew,RH,Tref,PWM_Peltier,PWM_Fan,Kp,Ki,Kd,Lambda,Mu\n';
     for(let i=0;i<histTime.length;i++){
       csv+=[
         histTime[i].toFixed(2), gv('txtTamb'),
         histTsup[i].toFixed(4), histTdew[i].toFixed(4),
         gv('txtRH'), Tref,
         histPeltier[i].toFixed(2), histFan[i].toFixed(2),
-        gv('txtKp'), gv('txtKi'), gv('txtKd'), gv('txtLam'), gv('txtMu'),
-        fanOn?'ON':'OFF'
+        gv('txtKp'), gv('txtKi'), gv('txtKd'), gv('txtLam'), gv('txtMu')
       ].join(',')+'\n';
     }
     const a=document.createElement('a');
     a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
-    a.download=`FOPID_Tamb${gv('txtTamb')}_Tref${gv('txtTref')}_Fan${fanOn?'ON':'OFF'}_trial${String(ensayoNumero).padStart(3,'0')}.csv`;
+    a.download=`FOPID_Tamb${gv('txtTamb')}_Tref${gv('txtTref')}_trial${String(ensayoNumero).padStart(3,'0')}.csv`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
 
@@ -574,18 +565,46 @@ document.addEventListener("DOMContentLoaded", function () {
     const p5canvas=document.querySelector('#canvas-container canvas');
     if(!p5canvas) return;
     const m=trialMetrics;
-    const panelW=Math.round(p5canvas.width*(1/3)), imgW=p5canvas.width+panelW, imgH=p5canvas.height;
-    const off=document.createElement('canvas');
+    const mono='"Courier New",monospace';
+
+    // ── 1. Calculate total text height needed ──────────────
+    // sec: 26px font + 12 + 30 = 42px per section header
+    // row: 38px per row
+    // gap: 20px
+    // title block: 48 (start) + 40 + 52 = 140px before first sec
+    const secH = 42, rowH_r = 38, gapH = 20;
+    const contentHeight =
+      140                        // title + date
+      + secH + 6*rowH_r + gapH  // CONTROLLER PARAMETERS (6 rows)
+      + secH + 5*rowH_r + gapH  // TEST CONDITIONS (5 rows)
+      + secH + 7*rowH_r + 40;   // PERFORMANCE METRICS (7 rows) + bottom padding
+
+    const panelW  = Math.round(p5canvas.width * (1/3));
+    const imgW    = p5canvas.width + panelW;
+    const imgH    = Math.max(p5canvas.height, contentHeight); // expand if needed
+
+    const off = document.createElement('canvas');
     off.width=imgW; off.height=imgH;
     const ctx=off.getContext('2d');
+
+    // Background
     ctx.fillStyle='#f5f5f5'; ctx.fillRect(0,0,imgW,imgH);
+
+    // Draw p5 canvas (top-aligned)
     ctx.drawImage(p5canvas,0,0);
+
+    // If PNG is taller than canvas, fill the extra strip below with bg color
+    if(imgH > p5canvas.height){
+      ctx.fillStyle='#f5f5f5';
+      ctx.fillRect(0, p5canvas.height, p5canvas.width, imgH - p5canvas.height);
+    }
+
     const px=p5canvas.width;
     ctx.fillStyle='#fff'; ctx.fillRect(px,0,panelW,imgH);
     ctx.strokeStyle='#ccc'; ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(px,0); ctx.lineTo(px,imgH); ctx.stroke();
 
-    const col=px+20, mono='"Courier New",monospace';
+    const col=px+20;
     let cy=48;
 
     function sec(t){
@@ -637,7 +656,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const dataURL=off.toDataURL('image/png');
     const a=document.createElement('a');
     a.href=dataURL;
-    a.download=`FOPID_Tamb${gv('txtTamb')}_Tref${gv('txtTref')}_Fan${fanOn?'ON':'OFF'}_trial${String(ensayoNumero).padStart(3,'0')}.png`;
+    a.download=`FOPID_Tamb${gv('txtTamb')}_Tref${gv('txtTref')}_trial${String(ensayoNumero).padStart(3,'0')}.png`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   }
 
