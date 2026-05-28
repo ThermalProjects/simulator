@@ -129,7 +129,6 @@
 
   <button class="btn" id="btnStart" style="margin-top: clamp(14px, 2.2vh, 26px);">Start trial</button>
   <button class="btn" id="btnMode">Mode: Setpoint</button>
-  <button class="btn" id="btnFan">Fan: OFF</button>
   <button class="btn" id="btnSave" disabled>Save report</button>
 </div>
 
@@ -212,7 +211,7 @@ document.addEventListener("DOMContentLoaded", function () {
   let trialMetrics=null;
   let ensayoNumero=0, ensayoDuracion=300;
   let showTdew=false, justFinished=false;
-  let fanOn=false;
+  let fanOn=true;
   let energyJ=0;
   let histTsup=[], histTdew=[], histPeltier=[], histFan=[], histTime=[];
   let prevTsup=20, prevTdew=0;
@@ -272,18 +271,6 @@ document.addEventListener("DOMContentLoaded", function () {
     sendMsg(showTdew ? 'MODE_TDEW_ON\n' : 'MODE_TDEW_OFF\n');
   });
 
-  g('btnFan').addEventListener('click', () => {
-    fanOn=!fanOn;
-    if(fanOn){
-      g('btnFan').textContent='Fan: ON';
-      g('btnFan').classList.add('fanon');
-      sendMsg('FAN_ON\n');
-    } else {
-      g('btnFan').textContent='Fan: OFF';
-      g('btnFan').classList.remove('fanon');
-      sendMsg('FAN_OFF\n');
-    }
-  });
 
   g('btnSave').addEventListener('click', () => {
     if(!trialMetrics) return;
@@ -362,9 +349,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
       s.fill(s.color(80,80,80)); s.textAlign(s.LEFT,s.TOP);
       s.text('PWM Peltier:',  col2X, infoY);
-      s.text('Fan:',          col2X, infoY + rowH);
-      s.text('Trial nº:',     col2X, infoY + rowH*2);
-      s.text('Time:',         col2X, infoY + rowH*3);
+      s.text('Trial nº:',     col2X, infoY + rowH);
+      s.text('Time:',         col2X, infoY + rowH*2);
 
       s.fill(C.text()); s.textAlign(s.LEFT,s.TOP);
       s.text(`${s.nf(pwmPeltier,1,0)}`, valCol2, infoY);
