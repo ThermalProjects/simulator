@@ -1,1 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FOPID Thermal Management</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.3/p5.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #f5f5f5;
+      font-family: 'Courier New', monospace;
+      position: relative;
+    }
+
+    /* ── Sidebar: fills 100vh, no scroll, calibrated for 1080px height ── */
+    #sidebar {
+      position: absolute; top: 0; left: 0;
+      width: 270px; height: 100%;
+      background: rgba(245,245,245,0.97);
+      padding: clamp(8px, 1.5vh, 18px) 16px;
+      display: flex; flex-direction: column;
+      gap: clamp(3px, 0.75vh, 9px);
+      overflow: hidden;
+      z-index: 10;
+    }
+    #sidebar * { max-width: 100%; }
+
+    #sidebar label {
+      font-size: clamp(10px, 1.1vh, 12px);
+      color: #333;
+      font-family: 'Courier New', monospace;
+      margin-top: clamp(2px, 0.5vh, 6px);
+      line-height: 1;
+    }
+    #sidebar input[type=text] {
+      width: 100%;
+      padding: clamp(3px, 0.6vh, 7px) 8px;
+      font-size: clamp(11px, 1.2vh, 13px);
+      font-family: 'Courier New', monospace;
+      background: #dcdcdc; border: 1px solid #aaa;
+      color: #222; border-radius: 2px; outline: none;
+      line-height: 1;
+    }
+    #sidebar input:focus { background: #c8c8c8; }
+
+    .btn {
+      width: 100%;
+      padding: clamp(9px, 1.6vh, 18px) 0;
+      font-size: clamp(13px, 1.9vh, 18px);
+      font-family: 'Courier New', monospace;
+      border: none; border-radius: 3px; cursor: pointer;
+      margin-top: clamp(6px, 1.0vh, 12px);
+      font-weight: bold;
+      flex-shrink: 0;
+      transition: filter 0.15s, background 0.3s, color 0.3s;
+    }
+    .btn:hover:not(:disabled) { filter: brightness(0.9); }
+
+    #btnStart         { background: #87ceeb; color: #003050; }
+    #btnStart.active  { background: #b43232; color: #fff; }
+    #btnMode          { background: #6495ed; color: #fff; }
+    #btnSave          { background: #aaa;    color: #eee; cursor: not-allowed; }
+    #btnSave.ready    { background: #4a9a5e; color: #fff; cursor: pointer; }
+
+    #status-row {
+      display: flex; align-items: center; gap: 6px;
+      margin-bottom: clamp(1px, 0.3vh, 4px);
+      flex-shrink: 0;
+    }
+    #status-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #aaa; flex-shrink: 0;
+    }
+    #status-dot.connected    { background: #22cc66; box-shadow: 0 0 6px #22cc66; }
+    #status-dot.disconnected { background: #cc3333; }
+    #status-dot.logging      { background: #f5a623; animation: pulse 0.8s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    #status-label { font-size: clamp(9px, 1.1vh, 11px); color: #555; font-family: 'Courier New', monospace; }
+
+    /* ── Canvas + footer ── */
+    #canvas-container {
+      position: absolute; left: 270px; top: 0; right: 0; bottom: 60px;
+    }
+    canvas { display: block; }
+
+    #footer-info {
+      position: absolute; left: 270px; bottom: 0; right: 0; height: 60px;
+      background: #f5f5f5; display: flex; align-items: center;
+      padding: 0 28px; z-index: 10;
+    }
+    #footer-default { font-family: 'Courier New', monospace; font-size: 11px; color: #aaa; font-style: italic; }
+    #footer-hint    { display: none; flex-direction: column; gap: 3px; }
+    #footer-hint .hint-title { font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold; color: #003090; }
+    #footer-hint .hint-body  { font-family: 'Courier New', monospace; font-size: 11.5px; color: #333; line-height: 1.5; }
+  </style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div id="status-row">
+    <span id="status-dot" class="disconnected"></span>
+    <span id="status-label">Not connected</span>
+  </div>
+
+  <label>Setpoint Temp (°C)</label>
+  <input id="txtTref"     type="text" value="12.0"/>
+  <label>Kp</label>
+  <input id="txtKp"       type="text" value="28.361"/>
+  <label>Ki</label>
+  <input id="txtKi"       type="text" value="0.9195"/>
+  <label>Kd</label>
+  <input id="txtKd"       type="text" value="2.5452"/>
+  <label>λ (lambda)</label>
+  <input id="txtLam"      type="text" value="1.1946"/>
+  <label>μ (mu)</label>
+  <input id="txtMu"       type="text" value="1.3013"/>
+  <label>Trial duration [s]</label>
+  <input id="txtDuracion" type="text" value="300"/>
+  <label>Ambient temperature (°C)</label>
+  <input id="txtTamb"     type="text" value="20.0"/>
+  <label>Relative humidity (%)</label>
+  <input id="txtRH"       type="text" value="70.0"/>
+
+  <button class="btn" id="btnStart" style="margin-top: clamp(14px, 2.2vh, 26px);">Start trial</button>
+  <button class="btn" id="btnMode">Mode: Setpoint</button>
+  <button class="btn" id="btnSave" disabled>Save report</button>
+</div>
+
+<div id="canvas-container"></div>
+
+<div id="footer-info">
+  <div id="footer-default">Click any parameter to see its effect on the controller response</div>
+  <div id="footer-hint">
+    <span class="hint-title" id="hint-title"></span>
+    <span class="hint-body"  id="hint-body"></span>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+  const WS_URL = "wss://p01--simulator--kmwdvpyzvvmf.code.run";
+  let ws = null, wsConnected = false;
+
+  const dot = document.getElementById('status-dot');
+  const lbl = document.getElementById('status-label');
+  function setStatus(cls, text){ dot.className = cls; lbl.textContent = text; }
+
+  function connectWS(){
+    if(ws){ try{ ws.close(); }catch(e){} }
+    setStatus('disconnected','Connecting…');
+    ws = new WebSocket(WS_URL);
+    ws.onopen  = () => { wsConnected=true;  setStatus('connected','Connected'); };
+    ws.onclose = () => { wsConnected=false; setStatus('disconnected','Not connected'); setTimeout(connectWS,5000); };
+    ws.onerror = ()  => { setStatus('disconnected','Connection error'); };
+
+    ws.onmessage = (evt) => {
+      const line = evt.data.trim();
+      if(!line || line==='START' || line==='STOP' || line.startsWith('CMD')) return;
+      const vals = line.split(',');
+      if(vals.length < 6) return;
+
+      const newTsup = parseFloat(vals[1]);
+      const newTdew = parseFloat(vals[3]);
+      const newPwm  = parseFloat(vals[4]);
+      const newTh   = vals.length > 6 ? parseFloat(vals[6]) : NaN;
+      if(isNaN(newTsup) || isNaN(newTdew)) return;
+
+      prevTsup = nextTsup; prevTdew = nextTdew; prevPwmPeltier = nextPwmPeltier;
+      nextTamb = parseFloat(vals[0]);
+      nextTsup = newTsup; nextRH = parseFloat(vals[2]);
+      nextTdew = newTdew; nextPwmPeltier = newPwm;
+      pwmFan   = parseFloat(vals[5]);
+      if(!isNaN(newTh)) nextTh = newTh;
+      interpTimer = 0;
+
+      if(isLogging){
+        const t = (Date.now() - startTime) / 1000;
+        histTime.push(t);
+        histTsup.push(newTsup);
+        histTdew.push(newTdew);
+        histPeltier.push(newPwm);
+        histFan.push(pwmFan);
+        const P = peltierPower(newPwm);
+        energyJ += P * dt_server;
+      }
+    };
+  }
+  connectWS();
+
+  function sendMsg(msg){ if(ws && ws.readyState===WebSocket.OPEN) ws.send(msg); }
+
+  function peltierPower(pwm){
+    const p = -1.0867e-4*pwm*pwm + 7.8994e-2*pwm - 5.815e-2;
+    return Math.max(0, p);
+  }
+
+  // ── State ──────────────────────────────────────────────
+  const dt_server = 0.2;
+  let prevPwmPeltier=0, nextPwmPeltier=0, pwmPeltier=0;
+  let Tsup=20, Tdew=0, Tref=12, Th=20;
+  let nextTamb=20, nextTsup=20, nextRH=70, nextTdew=0, nextTh=20;
+  let pwmFan=0;
+  let isLogging=false, startTime=0;
+  let trialMetrics=null;
+  let ensayoNumero=0, ensayoDuracion=300;
+  let showTdew=false, justFinished=false;
+  let fanOn=true;
+  let energyJ=0;
+  let histTsup=[], histTdew=[], histPeltier=[], histFan=[], histTime=[];
+  let prevTsup=20, prevTdew=0;
+  let interpTimer=0;
+  const Tsamp=0.2, interpStep=0.05;
+
+  const g  = id => document.getElementById(id);
+  const gv = id => g(id).value.trim();
+  const gf = (id,d) => { const v=parseFloat(gv(id)); return isNaN(v)?d:v; };
+
+  function setSaveReady(ready){
+    const btn = g('btnSave');
+    btn.classList.toggle('ready', ready);
+    btn.disabled = !ready;
+  }
+
+  // ── Buttons ────────────────────────────────────────────
+  g('btnStart').addEventListener('click', () => {
+    if(!isLogging){
+      if(!wsConnected){ alert('Waiting for connection…'); return; }
+      Tref           = gf('txtTref',12);
+      ensayoDuracion = gf('txtDuracion',300);
+      const Tambv    = gf('txtTamb',20);
+      const RHv      = gf('txtRH',70);
+      const Kp       = gf('txtKp',28.361);
+      const Ki       = gf('txtKi',0.9195);
+      const Kd       = gf('txtKd',2.5452);
+      const lam      = gf('txtLam',1.1946);
+      const mu       = gf('txtMu',1.3013);
+
+      isLogging=true; startTime=Date.now(); ensayoNumero++;
+      trialMetrics=null; energyJ=0; setSaveReady(false);
+      histTsup=[]; histTdew=[]; histPeltier=[]; histFan=[]; histTime=[];
+      prevTsup=nextTsup=Tambv; prevTdew=nextTdew=0;
+      prevPwmPeltier=nextPwmPeltier=0; interpTimer=0;
+
+      const fanFlag = fanOn ? 1 : 0;
+      sendMsg(`START,${Tref},${Kp},${Ki},${Kd},${lam},${mu},${ensayoDuracion},${Tambv},${RHv},${fanFlag}\n`);
+      g('btnStart').textContent='Stop trial';
+      g('btnStart').classList.add('active');
+      setStatus('logging','Trial in progress');
+    } else {
+      isLogging=false;
+      sendMsg('STOP\n');
+      justFinished=true;
+      trialMetrics=calcMetrics(histTsup, Tref, histTime, energyJ);
+      setSaveReady(true);
+      g('btnStart').textContent='Start trial';
+      g('btnStart').classList.remove('active');
+      setStatus('connected','Connected');
+    }
+  });
+
+  g('btnMode').addEventListener('click', () => {
+    showTdew=!showTdew;
+    g('btnMode').textContent = showTdew ? 'Mode: Dew Point' : 'Mode: Setpoint';
+    sendMsg(showTdew ? 'MODE_TDEW_ON\n' : 'MODE_TDEW_OFF\n');
+  });
+
+  g('btnSave').addEventListener('click', () => {
+    if(!trialMetrics) return;
+    saveCSV();
+    savePNG();
+  });
+
+  // ── p5 sketch ──────────────────────────────────────────
+  new p5(function(s){
+
+    const C = {
+      bg:       () => s.color(245),
+      panel:    () => s.color(255),
+      border:   () => s.color(180),
+      title:    () => s.color(0,80,140),
+      text:     () => s.color(0),
+      green:    () => s.color(0,150,0),
+      blue:     () => s.color(0,0,255),
+      magenta:  () => s.color(255,0,255),
+      gridLine: () => s.color(200),
+      gridTxt:  () => s.color(50),
+    };
+
+    s.setup = function(){
+      const c = document.getElementById('canvas-container');
+      s.createCanvas(c.offsetWidth, c.offsetHeight).parent('canvas-container');
+      s.textFont('Courier New');
+    };
+    s.windowResized = function(){
+      const c = document.getElementById('canvas-container');
+      s.resizeCanvas(c.offsetWidth, c.offsetHeight);
+    };
+
+    s.draw = function(){
+      s.background(C.bg());
+
+      interpTimer += interpStep;
+      const ratio = s.constrain(interpTimer/Tsamp,0,1);
+      Tsup       = s.lerp(prevTsup,       nextTsup,       ratio);
+      Tdew       = s.lerp(prevTdew,       nextTdew,       ratio);
+      pwmPeltier = s.lerp(prevPwmPeltier, nextPwmPeltier, ratio);
+      Th         = s.lerp(Th,             nextTh,         ratio);
+
+      const _fullW = s.width - 60 - 20;
+      const _gw    = _fullW * 0.90;
+      const _gx    = 60 + (_fullW - _gw) / 2;
+      const _grx   = _gx + _gw;
+
+      // ── Title
+      s.textSize(22); s.fill(C.title()); s.textAlign(s.LEFT,s.TOP); s.noStroke();
+      s.text('Fractional PID Thermal System Simulator', _gx, 10);
+      s.textSize(11); s.fill(s.color(100,100,130));
+      s.text('Peltier cell thermal control  ·  FOPID controller', _gx, 36);
+
+      // ── Readouts: two columns
+      const infoY  = 56;
+      const rowH   = 18;
+      const lblCol1 = _gx;
+      const valCol1 = _gx + 210;
+      const col2X   = _gx + _gw * 0.50;
+      const valCol2 = col2X + 170;
+
+      s.textSize(13); s.noStroke();
+
+      // Left column labels
+      s.fill(s.color(80,80,80)); s.textAlign(s.LEFT,s.TOP);
+      s.text('Cold face temp:',  lblCol1, infoY);
+      s.text('Hot face temp:',   lblCol1, infoY + rowH);
+      s.text('Ambient temp:',    lblCol1, infoY + rowH*2);
+      s.text('Dew point:',       lblCol1, infoY + rowH*3);
+
+      // Left column values
+      s.fill(C.text()); s.textAlign(s.LEFT,s.TOP);
+      s.text(`${s.nf(Tsup,1,2)} °C`,   valCol1, infoY);
+      s.text(`${s.nf(Th,1,2)} °C`,     valCol1, infoY + rowH);
+      s.text(`${gv('txtTamb')} °C`,     valCol1, infoY + rowH*2);
+      s.text(`${s.nf(Tdew,1,2)} °C`,   valCol1, infoY + rowH*3);
+
+      // Right column labels
+      s.fill(s.color(80,80,80)); s.textAlign(s.LEFT,s.TOP);
+      s.text('PWM Peltier:',  col2X, infoY);
+      s.text('Trial nº:',     col2X, infoY + rowH);
+      s.text('Time:',         col2X, infoY + rowH*2);
+
+      // Right column values
+      s.fill(C.text()); s.textAlign(s.LEFT,s.TOP);
+      s.text(`${s.nf(pwmPeltier,1,0)}`, valCol2, infoY);
+
+      if(isLogging){
+        const elapsed = Math.floor((Date.now()-startTime)/1000);
+        s.text(`${ensayoNumero}`, valCol2, infoY + rowH);
+        s.text(`${elapsed} s / ${ensayoDuracion} s`, valCol2, infoY + rowH*2);
+        if(elapsed >= ensayoDuracion){
+          isLogging=false; justFinished=true;
+          trialMetrics=calcMetrics(histTsup, Tref, histTime, energyJ);
+          setSaveReady(true);
+          g('btnStart').textContent='Start trial';
+          g('btnStart').classList.remove('active');
+          sendMsg('STOP\n');
+          setStatus('connected','Connected');
+        }
+      } else {
+        s.fill(s.color(150,150,150));
+        s.text(ensayoNumero > 0 ? `${ensayoNumero}` : '—', valCol2, infoY + rowH);
+        s.text('—', valCol2, infoY + rowH*2);
+        s.fill(C.text());
+      }
+
+      if(trialMetrics && !isLogging){
+        const mLines = [
+          ['── TRIAL METRICS ──', null],
+          ['RMSE SS',    (trialMetrics.rmse!==null ? trialMetrics.rmse.toFixed(3) : 'N/A') + (trialMetrics.rmse!==null ? ' °C' : '')],
+          ['MAE SS',     (trialMetrics.mae!==null  ? trialMetrics.mae.toFixed(3)  : 'N/A') + (trialMetrics.mae!==null  ? ' °C' : '')],
+          ['Undershoot',  trialMetrics.undershoot.toFixed(3) + ' °C'],
+          ['SS error',    trialMetrics.ssError.toFixed(3)    + ' °C'],
+          ['Rise time',   (trialMetrics.riseTime!==null ? trialMetrics.riseTime.toFixed(1) : 'N/A') + ' s'],
+          ['Settling',    (trialMetrics.settlingTime!==null ? trialMetrics.settlingTime.toFixed(1) : 'N/A') + ' s'],
+          ['Energy',      trialMetrics.energyJ.toFixed(1)   + ' J'],
+        ];
+        const lineH = 17;
+        mLines.forEach(([label, val], i) => {
+          const y = 10 + i * lineH;
+          if(val===null){
+            s.textSize(10); s.fill(s.color(0,60,120));
+            s.textAlign(s.RIGHT,s.TOP);
+            s.text(label, _grx, y);
+          } else {
+            s.textSize(11);
+            s.textAlign(s.LEFT,s.TOP); s.fill(s.color(90,90,90));
+            s.text(label, _grx-160, y);
+            s.textAlign(s.RIGHT,s.TOP); s.fill(s.color(20,20,20));
+            s.text(val, _grx, y);
+          }
+        });
+        s.textAlign(s.LEFT,s.TOP);
+      }
+
+      drawGraph(s, C);
+      if(justFinished) justFinished=false;
+    };
+
+  }, document.getElementById('canvas-container'));
+
+  // ── Graph ──────────────────────────────────────────────
+  function drawGraph(s, C){
+    const scaleFactor = 0.90;
+    const fullW = s.width  - 60 - 20;
+    const fullH = s.height - 150 - 70;
+    const gw = fullW * scaleFactor;
+    const gh = fullH * scaleFactor;
+    const gx = 60  + (fullW - gw) / 2;
+    const gy = 150 + (fullH - gh) / 2;
+    const tMin=0, tMax=40, yLines=8, xLines=6;
+
+    s.fill(C.panel()); s.stroke(C.border()); s.strokeWeight(1);
+    s.rect(gx, gy, gw, gh, 6);
+
+    const lx=gx+15, ly=gy+14, lsz=11;
+    s.noStroke(); s.fill(C.green()); s.rect(lx,ly,lsz,lsz);
+    s.fill(C.text()); s.textSize(11); s.textAlign(s.LEFT,s.CENTER);
+    s.text('Tsup', lx+lsz+4, ly+lsz/2);
+    if(showTdew){
+      s.fill(C.magenta()); s.rect(lx+70,ly,lsz,lsz);
+      s.fill(C.text()); s.text('Tdew', lx+70+lsz+4, ly+lsz/2);
+    } else {
+      s.fill(C.blue()); s.rect(lx+140,ly,lsz,lsz);
+      s.fill(C.text()); s.text('Tref', lx+140+lsz+4, ly+lsz/2);
+    }
+
+    s.stroke(C.gridLine()); s.strokeWeight(1);
+    for(let i=0;i<=yLines;i++){
+      const y=gy+gh-i*gh/yLines;
+      s.line(gx,y,gx+gw,y);
+      s.fill(C.gridTxt()); s.noStroke();
+      s.textSize(11); s.textAlign(s.RIGHT,s.CENTER);
+      s.text((tMin+i*(tMax-tMin)/yLines).toFixed(0), gx-6, y);
+      s.stroke(C.gridLine());
+    }
+
+    if(histTime.length < 2) return;
+
+    const tStart=histTime[0];
+    const tEnd=Math.max(histTime[histTime.length-1], tStart+1);
+
+    for(let i=0;i<=xLines;i++){
+      const xVal=s.lerp(tStart,tEnd,i/xLines);
+      const x=s.map(xVal,tStart,tEnd,gx,gx+gw);
+      s.stroke(C.gridLine()); s.line(x,gy,x,gy+gh);
+      s.fill(C.gridTxt()); s.noStroke();
+      s.textSize(11); s.textAlign(s.CENTER,s.TOP);
+      s.text(xVal.toFixed(0), x, gy+gh+4);
+    }
+
+    s.fill(C.text()); s.noStroke(); s.textSize(13);
+    s.textAlign(s.CENTER,s.TOP);
+    s.text('Time [s]', gx+gw/2, gy+gh+30);
+    s.push(); s.translate(gx-42,gy+gh/2); s.rotate(-Math.PI/2);
+    s.textAlign(s.CENTER,s.CENTER);
+    s.text('Temperature [°C]',0,0);
+    s.pop();
+
+    if(!showTdew){
+      s.stroke(C.blue()); s.strokeWeight(1.5);
+      const yRef=s.map(Tref,0,tMax,gy+gh,gy);
+      s.line(gx,yRef,gx+gw,yRef);
+    }
+
+    s.stroke(C.green()); s.strokeWeight(2); s.noFill(); s.beginShape();
+    for(let i=0;i<histTsup.length;i++){
+      const x=s.constrain(s.map(histTime[i],tStart,tEnd,gx,gx+gw),gx,gx+gw);
+      const y=s.constrain(s.map(histTsup[i],0,tMax,gy+gh,gy),gy,gy+gh);
+      s.vertex(x,y);
+    }
+    s.endShape();
+
+    if(showTdew){
+      s.stroke(C.magenta()); s.strokeWeight(1.5); s.noFill(); s.beginShape();
+      for(let i=0;i<histTdew.length;i++){
+        const x=s.constrain(s.map(histTime[i],tStart,tEnd,gx,gx+gw),gx,gx+gw);
+        const y=s.constrain(s.map(histTdew[i],0,tMax,gy+gh,gy),gy,gy+gh);
+        s.vertex(x,y);
+      }
+      s.endShape();
+    }
+  }
+
+  // ── Metrics ────────────────────────────────────────────
+  function calcMetrics(tsup, tref, times, eJ){
+    if(!tsup || tsup.length < 2) return null;
+    const n = tsup.length;
+
+    const cooling = tsup[0] > tref;
+    let undershoot=0;
+    tsup.forEach(v => {
+      const under = cooling ? tref-v : v-tref;
+      if(under > undershoot) undershoot=under;
+    });
+
+    const tail    = tsup.slice(-Math.max(1,Math.floor(n*0.1)));
+    const ssMean  = tail.reduce((a,b)=>a+b,0)/tail.length;
+    const ssError = Math.abs(ssMean-tref);
+
+    const T0   = tsup[0];
+    const span = Math.abs(ssMean-T0);
+    let t10=null, t90=null;
+    for(let i=0;i<tsup.length;i++){
+      const prog=Math.abs(tsup[i]-T0)/(span||1);
+      if(t10===null && prog>=0.10) t10=times[i];
+      if(t90===null && prog>=0.90) t90=times[i];
+    }
+    const riseTime=(t10!==null&&t90!==null)?(t90-t10):null;
+
+    const band=0.02*(span||1);
+    let settlingTime=null;
+    for(let i=tsup.length-1;i>=0;i--){
+      if(Math.abs(tsup[i]-ssMean)>band){ settlingTime=times[i]; break; }
+    }
+
+    // RMSE SS and MAE SS: only from settlingTime to end
+    let rmse=null, mae=null;
+    if(settlingTime !== null){
+      const ssIdx = times.findIndex(t => t >= settlingTime);
+      const ssSamples = tsup.slice(ssIdx);
+      if(ssSamples.length > 0){
+        let sumSq=0, sumAbs=0;
+        ssSamples.forEach(v => { sumSq+=(v-tref)**2; sumAbs+=Math.abs(v-tref); });
+        rmse = Math.sqrt(sumSq/ssSamples.length);
+        mae  = sumAbs/ssSamples.length;
+      }
+    }
+
+    return { rmse, mae, undershoot, ssError, riseTime, settlingTime, energyJ: eJ };
+  }
+
+  // ── CSV export ─────────────────────────────────────────
+  function saveCSV(){
+    let csv='Time,Tamb,Tsup,Tdew,RH,Tref,PWM_Peltier,PWM_Fan,Kp,Ki,Kd,Lambda,Mu\n';
+    for(let i=0;i<histTime.length;i++){
+      csv+=[
+        histTime[i].toFixed(2), gv('txtTamb'),
+        histTsup[i].toFixed(4), histTdew[i].toFixed(4),
+        gv('txtRH'), Tref,
+        histPeltier[i].toFixed(2), histFan[i].toFixed(2),
+        gv('txtKp'), gv('txtKi'), gv('txtKd'), gv('txtLam'), gv('txtMu')
+      ].join(',')+'\n';
+    }
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+    a.download=`FOPID_Tamb${gv('txtTamb')}_Tref${gv('txtTref')}_trial${String(ensayoNumero).padStart(3,'0')}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }
+
+  // ── PNG export ─────────────────────────────────────────
+  function savePNG(){
+    const p5canvas=document.querySelector('#canvas-container canvas');
+    if(!p5canvas) return;
+    const m=trialMetrics;
+    const mono='"Courier New",monospace';
+
+    // ── 1. Calculate total text height needed ──────────────
+    // sec: 26px font + 12 + 30 = 42px per section header
+    // row: 38px per row
+    // gap: 20px
+    // title block: 48 (start) + 40 + 52 = 140px before first sec
+    const secH = 42, rowH_r = 38, gapH = 20;
+    const contentHeight =
+      140                        // title + date
+      + secH + 6*rowH_r + gapH  // CONTROLLER PARAMETERS (6 rows)
+      + secH + 5*rowH_r + gapH  // TEST CONDITIONS (5 rows)
+      + secH + 7*rowH_r + 40;   // PERFORMANCE METRICS (7 rows) + bottom padding
+
+    const panelW  = Math.round(p5canvas.width * (1/3));
+    const imgW    = p5canvas.width + panelW;
+    const imgH    = Math.max(p5canvas.height, contentHeight); // expand if needed
+
+    const off = document.createElement('canvas');
+    off.width=imgW; off.height=imgH;
+    const ctx=off.getContext('2d');
+
+    // Background
+    ctx.fillStyle='#f5f5f5'; ctx.fillRect(0,0,imgW,imgH);
+
+    // Draw p5 canvas (top-aligned)
+    ctx.drawImage(p5canvas,0,0);
+
+    // If PNG is taller than canvas, fill the extra strip below with bg color
+    if(imgH > p5canvas.height){
+      ctx.fillStyle='#f5f5f5';
+      ctx.fillRect(0, p5canvas.height, p5canvas.width, imgH - p5canvas.height);
+    }
+
+    const px=p5canvas.width;
+    ctx.fillStyle='#fff'; ctx.fillRect(px,0,panelW,imgH);
+    ctx.strokeStyle='#ccc'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(px,0); ctx.lineTo(px,imgH); ctx.stroke();
+
+    const col=px+20;
+    let cy=48;
+
+    function sec(t){
+      ctx.font=`bold 26px ${mono}`; ctx.fillStyle='#001a60';
+      ctx.fillText(t,col,cy); cy+=12;
+      ctx.strokeStyle='#aac'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(col,cy); ctx.lineTo(px+panelW-20,cy); ctx.stroke();
+      cy+=30;
+    }
+    function row(l,v){
+      ctx.font=`24px ${mono}`; ctx.fillStyle='#555';
+      ctx.fillText(l,col,cy);
+      ctx.fillStyle='#111';
+      ctx.fillText(v, col+380, cy);
+      cy+=38;
+    }
+    function gap(){ cy+=20; }
+
+    ctx.font=`bold 32px ${mono}`; ctx.fillStyle='#001a60';
+    ctx.fillText('FOPID Trial Report',col,cy); cy+=40;
+    ctx.font=`22px ${mono}`; ctx.fillStyle='#999';
+    ctx.fillText(new Date().toLocaleString(),col,cy); cy+=52;
+
+    sec('CONTROLLER PARAMETERS');
+    row('Setpoint Tref', gv('txtTref')+' °C');
+    row('Kp',  gv('txtKp')); row('Ki', gv('txtKi'));
+    row('Kd',  gv('txtKd')); row('λ', gv('txtLam')); row('μ', gv('txtMu'));
+    gap();
+
+    sec('TEST CONDITIONS');
+    row('Ambient Temp',  gv('txtTamb')+' °C');
+    row('Rel. Humidity', gv('txtRH')+'%');
+    row('Duration',      gv('txtDuracion')+' s');
+    row('Trial nº',      String(ensayoNumero));
+    row('Samples',       String(histTsup.length));
+    gap();
+
+    sec('PERFORMANCE METRICS');
+    if(m){
+      row('RMSE SS',    m.rmse!==null ? m.rmse.toFixed(3)+' °C' : 'N/A');
+      row('MAE SS',     m.mae!==null  ? m.mae.toFixed(3)+' °C'  : 'N/A');
+      row('Undershoot', m.undershoot.toFixed(3)+' °C');
+      row('SS error',   m.ssError.toFixed(3)+' °C');
+      row('Rise time',  (m.riseTime!==null?m.riseTime.toFixed(1):'N/A')+' s');
+      row('Settling',   (m.settlingTime!==null?m.settlingTime.toFixed(1):'N/A')+' s');
+      row('Energy',     m.energyJ.toFixed(1)+' J');
+    }
+
+    const dataURL=off.toDataURL('image/png');
+    const a=document.createElement('a');
+    a.href=dataURL;
+    a.download=`FOPID_Tamb${gv('txtTamb')}_Tref${gv('txtTref')}_trial${String(ensayoNumero).padStart(3,'0')}.png`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }
+
+  // ── Contextual footer hints ────────────────────────────
+  const HINTS = {
+    txtTref:     { title:'Setpoint (Tref)',                  body:'Target temperature. Calibrated for this Peltier cell: Tref=12 °C with fan ON reaches steady state at ~60 PWM.' },
+    txtKp:       { title:'Kp — Proportional gain',           body:'Higher Kp → faster response but more undershoot and risk of oscillation. Identified value: 28.361.' },
+    txtKi:       { title:'Ki — Integral gain',               body:'Higher Ki → eliminates steady-state error faster, but too high causes oscillation or windup. Identified: 0.9195.' },
+    txtKd:       { title:'Kd — Derivative gain',             body:'Higher Kd → dampens oscillations. Excessive Kd amplifies noise. Identified value: 2.5452.' },
+    txtLam:      { title:'λ (lambda) — Fractional integrator order', body:'Values > 1 give stronger integral action. Identified from real plant: 1.1946.' },
+    txtMu:       { title:'μ (mu) — Fractional derivative order',     body:'Values > 1 give smoother derivative action than classic PD. Identified: 1.3013.' },
+    txtDuracion: { title:'Trial duration',                   body:'Total recording time in seconds. Trial stops and saves report automatically.' },
+    txtTamb:     { title:'Ambient temperature',              body:'Thermal load baseline. Real experiments ran at ~20.5 °C. Higher Tamb increases Peltier demand.' },
+    txtRH:       { title:'Relative humidity',                body:'High RH raises the dew point. If Tdew > Tsup, condensation occurs on the cold face.' },
+  };
+
+  const footerDefault = g('footer-default');
+  const footerHint    = g('footer-hint');
+  const hintTitle     = g('hint-title');
+  const hintBody      = g('hint-body');
+
+  Object.keys(HINTS).forEach(id => {
+    const el = g(id); if(!el) return;
+    el.addEventListener('focus', () => {
+      hintTitle.textContent=HINTS[id].title;
+      hintBody.textContent =HINTS[id].body;
+      footerDefault.style.display='none';
+      footerHint.style.display='flex';
+    });
+    el.addEventListener('blur', () => {
+      footerDefault.style.display='';
+      footerHint.style.display='none';
+    });
+  });
+
+  // ── Viewport scaling ──────────────────────────────────
+  const BASE_W = Math.round(window.innerWidth);
+  const BASE_H = Math.round(window.innerHeight);
+  function scaleApp(){
+    const scaleX = window.innerWidth  / BASE_W;
+    const scaleY = window.innerHeight / BASE_H;
+    const scale  = Math.min(scaleX, scaleY);
+    document.body.style.transform       = 'scale(' + scale + ')';
+    document.body.style.transformOrigin = 'top left';
+    document.body.style.width  = BASE_W + 'px';
+    document.body.style.height = BASE_H + 'px';
+  }
+  scaleApp();
+  window.addEventListener('resize', scaleApp);
+
+}); // DOMContentLoaded
+</script>
+</body>
+</html>
