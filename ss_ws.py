@@ -11,27 +11,71 @@ from plant import make_plant
 # ── CONFIG ────────────────────────────────────────────────
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", 5005))
-dt   = 0.2
+dt   = 0.1      # control period [s]; same as the Arduino firmware (Ts = 0.1)
 
 # ── PLANT ────────────────────────────────────────────────
 plant = make_plant(dt=dt)
 
-# ── FOPID MEMORY ──────────────────────────────────────────
-M = 30          # matches Arduino M=30
-I_MAX = 80.0    # matches Arduino I_MAX=80
-e_hist = [0.0] * (M + 1)
-wI     = [0.0] * (M + 1)
-wD     = [0.0] * (M + 1)
-
 # ── ARDUINO CONSTANTS ─────────────────────────────────────
-THERMAL_BIAS = 1.0   # Arduino subtracts this from Tref before controlling
-TDEW_OFFSET  = 1.5   # Arduino subtracts this from Tdew in dew point mode
+M            = 30    # GL memory length (same as Arduino)
+MAX_PWM      = 255
+THERMAL_BIAS = 0.0   # firmware v3+: controller tracks exactly Tref
+TDEW_OFFSET  = 0.0   # firmware v6: controller tracks exactly Tdew
 
-def init_gl(lambda_, mu):
-    wI[0] = wD[0] = 1.0
-    for k in range(1, M + 1):
-        wI[k] = wI[k-1] * ((lambda_ - (k-1)) / k)
-        wD[k] = wD[k-1] * ((mu     - (k-1)) / k)
+
+class FOPID:
+    """
+    Fractional-order PID, Grünwald-Letnikov discretisation (same algorithm as the firmware).
+
+        u = Kp*e + Ki*I + Kd * D_reg / h^mu
+
+    * Integral of order lambda:  s^-lambda = (1/s) * s^(1-lambda)
+          v[n] = h^-(1-lambda) * sum_k g_k^(1-lambda) e[n-k]     (GL, memory M)
+          I[n] = I[n-1] + h * v[n]                               (true accumulator)
+    * Derivative of order mu:    D[n] = sum_k g_k^(mu) e[n-k]    (GL, memory M),
+          regularised as D / (1 + |D|) and scaled by h^-mu
+    * GL weights with alternating sign:  g_0 = 1,  g_k = g_{k-1} * (k-1-a) / k
+      (lambda = mu = 1 recovers the classical discrete PID)
+    * Conditional anti-windup: the accumulator is frozen while the command is
+      saturated in the direction of v, and clamped to +-MAX_PWM/Ki.
+    """
+
+    def __init__(self, Kp, Ki, Kd, lambda_, mu, h):
+        self.Kp, self.Ki, self.Kd, self.h = Kp, Ki, Kd, h
+        a_v = 1.0 - lambda_
+        self.wV = [1.0] * (M + 1)      # GL weights of order (1 - lambda)
+        self.wD = [1.0] * (M + 1)      # GL weights of order mu
+        for k in range(1, M + 1):
+            self.wV[k] = self.wV[k-1] * ((k - 1) - a_v) / k
+            self.wD[k] = self.wD[k-1] * ((k - 1) - mu)  / k
+        self.hV = h ** a_v
+        self.hD = h ** mu
+        self.e_hist = [0.0] * (M + 1)
+        self.I = 0.0
+
+    def step(self, error):
+        self.e_hist.insert(0, error)
+        self.e_hist.pop()
+
+        sumV = sum(w * e for w, e in zip(self.wV, self.e_hist))
+        sumD = sum(w * e for w, e in zip(self.wD, self.e_hist))
+
+        v    = sumV / self.hV
+        uP   = self.Kp * error
+        uD   = self.Kd * (sumD / (1.0 + abs(sumD))) / self.hD
+
+        u_try = uP + self.Ki * (self.I + self.h * v) + uD
+        sat_high = (u_try > MAX_PWM) and (v > 0)
+        sat_low  = (u_try < 0)       and (v < 0)
+
+        if not sat_high and not sat_low:
+            self.I += self.h * v
+            if self.Ki > 1e-6:
+                lim = MAX_PWM / self.Ki
+                self.I = max(-lim, min(lim, self.I))
+
+        return uP + self.Ki * self.I + uD
+
 
 def calc_dew(T, RH):
     RH    = max(1.0, min(float(RH), 100.0))
@@ -44,11 +88,11 @@ def calc_dew(T, RH):
 state = dict(
     running   = False,
     Tref      = 12.0,
-    Kp        = 28.361,
-    Ki        = 0.9195,
-    Kd        = 2.5452,
-    lambda_   = 1.1946,
-    mu        = 1.3013,
+    Kp        = 49.9933,
+    Ki        = 2.9958,
+    Kd        = 1.7547,
+    lambda_   = 0.7809,
+    mu        = 1.2402,
     Tamb      = 20.0,
     RH        = 70.0,
     Tsup      = 20.0,
@@ -57,11 +101,15 @@ state = dict(
     show_tdew = False,
 )
 
-MAX_PWM = 255
+def new_controller():
+    return FOPID(state['Kp'], state['Ki'], state['Kd'],
+                 state['lambda_'], state['mu'], dt)
+
+ctrl = new_controller()
 
 # ── HANDLER ───────────────────────────────────────────────
 async def handler(websocket):
-    global e_hist
+    global ctrl
 
     print(f"[WS] Client connected: {websocket.remote_address}")
 
@@ -69,8 +117,7 @@ async def handler(websocket):
     state['running']   = False
     state['fan_on']    = False
     state['show_tdew'] = False
-    e_hist = [0.0] * (M + 1)
-    init_gl(state['lambda_'], state['mu'])
+    ctrl = new_controller()
 
     queue = asyncio.Queue()
 
@@ -85,8 +132,9 @@ async def handler(websocket):
             pass
 
     async def loop():
-        global e_hist
-        last = asyncio.get_event_loop().time()
+        global ctrl
+        clock  = asyncio.get_running_loop().time
+        next_t = clock()
 
         while True:
 
@@ -111,8 +159,7 @@ async def handler(websocket):
 
                     state['Tdew_const'] = calc_dew(state['Tamb'], state['RH'])
                     plant.reset(T_init=state['Tamb'])
-                    e_hist = [0.0] * (M + 1)
-                    init_gl(state['lambda_'], state['mu'])
+                    ctrl = new_controller()
 
                 elif cmd == "STOP":
                     state['running'] = False
@@ -133,32 +180,14 @@ async def handler(websocket):
             # ── CONTROL LOOP ───────────────────────────
             if state['running']:
 
-                # Target matches Arduino: Tref - THERMAL_BIAS (or Tdew - TDEW_OFFSET)
                 if state['show_tdew']:
                     target = state['Tdew_const'] - TDEW_OFFSET
                 else:
                     target = state['Tref'] - THERMAL_BIAS
 
                 error = state['Tsup'] - target
-
-                for i in range(M, 0, -1):
-                    e_hist[i] = e_hist[i-1]
-                e_hist[0] = error
-
-                sumI = sum(wI[k] * e_hist[k] for k in range(M + 1))
-                sumD = sum(wD[k] * e_hist[k] for k in range(M + 1))
-
-                # Match Arduino: clamp integral, regularize derivative
-                sumI_clamped = max(-I_MAX, min(I_MAX, sumI))
-                sumD_reg     = sumD / (1.0 + abs(sumD))
-
-                u = (
-                    state['Kp'] * error
-                    + state['Ki'] * (dt ** state['lambda_']) * sumI_clamped
-                    + state['Kd'] * (sumD_reg / (dt ** state['mu']))
-                )
-
-                pwm = int(max(0, min(MAX_PWM, u)))
+                u     = ctrl.step(error)
+                pwm   = int(max(0, min(MAX_PWM, u)))
 
                 Tc, _, Th = plant.step(pwm, state['Tamb'], fan_on=state['fan_on'])
                 state['Tsup'] = Tc
@@ -180,9 +209,13 @@ async def handler(websocket):
                 except Exception:
                     return
 
-            now = asyncio.get_event_loop().time()
-            await asyncio.sleep(max(0, dt - (now - last)))
-            last = now
+            # Fixed-rate schedule: exactly one step per dt
+            next_t += dt
+            delay = next_t - clock()
+            if delay > 0:
+                await asyncio.sleep(delay)
+            else:
+                next_t = clock()
 
     t1 = asyncio.create_task(rx())
     t2 = asyncio.create_task(loop())
