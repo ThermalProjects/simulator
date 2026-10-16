@@ -117,7 +117,7 @@
   <label>λ (lambda)</label>
   <input id="txtLam"      type="text" value="0.7809"/>
   <label>μ (mu)</label>
-  <input id="txtMu"       type="text" value="11.2402"/>
+  <input id="txtMu"       type="text" value="1.2402"/>
   <label>Trial duration [s]</label>
   <input id="txtDuracion" type="text" value="300"/>
   <label>Ambient temperature (°C)</label>
@@ -200,7 +200,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // ── State ──────────────────────────────────────────────
-  const dt_server = 0.2;
+  const dt_server = 0.1;
   let prevPwmPeltier=0, nextPwmPeltier=0, pwmPeltier=0;
   let Tsup=20, Tdew=0, Tref=12, Th=20;
   let nextTamb=20, nextTsup=20, nextRH=70, nextTdew=0, nextTh=20;
@@ -234,11 +234,11 @@ document.addEventListener("DOMContentLoaded", function () {
       ensayoDuracion = gf('txtDuracion',300);
       const Tambv    = gf('txtTamb',20);
       const RHv      = gf('txtRH',70);
-      const Kp       = gf('txtKp',28.361);
-      const Ki       = gf('txtKi',0.9195);
-      const Kd       = gf('txtKd',2.5452);
-      const lam      = gf('txtLam',1.1946);
-      const mu       = gf('txtMu',1.3013);
+      const Kp       = gf('txtKp',49.9933);
+      const Ki       = gf('txtKi',2.9958);
+      const Kd       = gf('txtKd',1.7547);
+      const lam      = gf('txtLam',0.7809);
+      const mu       = gf('txtMu',1.2402);
 
       isLogging=true; startTime=Date.now(); ensayoNumero++;
       trialMetrics=null; energyJ=0; setSaveReady(false);
@@ -663,11 +663,11 @@ document.addEventListener("DOMContentLoaded", function () {
   // ── Contextual footer hints ────────────────────────────
   const HINTS = {
     txtTref:     { title:'Setpoint (Tref)',                  body:'Target temperature. Calibrated for this Peltier cell: Tref=12 °C with fan ON reaches steady state at ~60 PWM.' },
-    txtKp:       { title:'Kp — Proportional gain',           body:'Higher Kp → faster response but more undershoot and risk of oscillation. Identified value: 28.361.' },
-    txtKi:       { title:'Ki — Integral gain',               body:'Higher Ki → eliminates steady-state error faster, but too high causes oscillation or windup. Identified: 0.9195.' },
-    txtKd:       { title:'Kd — Derivative gain',             body:'Higher Kd → dampens oscillations. Excessive Kd amplifies noise. Identified value: 2.5452.' },
-    txtLam:      { title:'λ (lambda) — Fractional integrator order', body:'Values > 1 give stronger integral action. Identified from real plant: 1.1946.' },
-    txtMu:       { title:'μ (mu) — Fractional derivative order',     body:'Values > 1 give smoother derivative action than classic PD. Identified: 1.3013.' },
+    txtKp:       { title:'Kp — Proportional gain',           body:'Higher Kp → faster response but more undershoot and risk of oscillation. Identified value: 49.9933.' },
+    txtKi:       { title:'Ki — Integral gain',               body:'Higher Ki → eliminates steady-state error faster, but too high causes oscillation or windup. Identified: 2.9958.' },
+    txtKd:       { title:'Kd — Derivative gain',             body:'Higher Kd → dampens oscillations. Excessive Kd amplifies noise. Identified value: 1.7547.' },
+    txtLam:      { title:'λ (lambda) — Fractional integrator order', body:'Values > 1 give stronger integral action. Identified from real plant: 0.7809.' },
+    txtMu:       { title:'μ (mu) — Fractional derivative order',     body:'Values > 1 give smoother derivative action than classic PD. Identified: 1.2402.' },
     txtDuracion: { title:'Trial duration',                   body:'Total recording time in seconds. Trial stops and saves report automatically.' },
     txtTamb:     { title:'Ambient temperature',              body:'Thermal load baseline. Real experiments ran at ~20.5 °C. Higher Tamb increases Peltier demand.' },
     txtRH:       { title:'Relative humidity',                body:'High RH raises the dew point. If Tdew > Tsup, condensation occurs on the cold face.' },
